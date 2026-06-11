@@ -34,6 +34,7 @@ Kernel coverage includes:
 - import create/match/update/dry-run by external reference
 - import/export helper behavior in strict capability mode
 - export through Read API with JSON Lines serialization
+- plugin manifest validation and example manifest coverage
 - idempotency replay behavior
 - idempotency scoping by workspace and write name
 

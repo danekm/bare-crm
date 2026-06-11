@@ -1,0 +1,41 @@
+{
+  "id": "example.follow-ups",
+  "name": "Follow-up reminders",
+  "version": "0.1.0",
+  "description": "Creates follow-up tasks from CRM events without running inside the kernel.",
+  "capabilities": [
+    "crm:read:event.list",
+    "crm:read:record.get",
+    "crm:write:task.create",
+    "plugin:workflows",
+    "plugin:policies"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "task",
+        "key": "followUpReason",
+        "label": "Follow-up reason",
+        "type": "string"
+      }
+    ],
+    "policies": [
+      {
+        "id": "follow-ups.require-due-date",
+        "name": "Require due dates for follow-up tasks",
+        "operations": ["task.create"],
+        "mode": "warn"
+      }
+    ],
+    "workflows": [
+      {
+        "id": "follow-ups.after-meeting",
+        "name": "Create follow-up after meetings",
+        "listensTo": ["activity.created"],
+        "writes": ["task.create"]
+      }
+    ],
+    "commands": [],
+    "uiSlots": []
+  }
+}

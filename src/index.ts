@@ -18,6 +18,23 @@ export type {
   ImportByExternalRefResult,
   ImportExportOptions,
 } from "./import_export.ts"
+export {
+  createPluginExecutionContext,
+  kernelCapabilitiesFromPlugin,
+  PluginManifestError,
+  validatePluginManifest,
+} from "./plugins.ts"
+export type {
+  PluginCommandContribution,
+  PluginContributions,
+  PluginFieldContribution,
+  PluginManifest,
+  PluginPolicyContribution,
+  PluginRuntimeCapability,
+  PluginSyncContribution,
+  PluginUiSlotContribution,
+  PluginWorkflowContribution,
+} from "./plugins.ts"
 export { createMemoryStorage, StorageConflictError } from "./storage.ts"
 export type { StorageApi, StorageTx } from "./storage.ts"
 export type * from "./types.ts"

@@ -1,0 +1,43 @@
+{
+  "id": "example.csv-import",
+  "name": "CSV import helper",
+  "version": "0.1.0",
+  "description": "Maps CSV rows into Bare CRM records through import helpers and the Write API.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:person.create",
+    "crm:write:company.create",
+    "crm:write:record.update",
+    "plugin:commands",
+    "plugin:sync",
+    "files:read"
+  ],
+  "contributes": {
+    "fields": [],
+    "policies": [],
+    "workflows": [],
+    "commands": [
+      {
+        "id": "csv-import.import-file",
+        "name": "Import CSV file",
+        "description": "Import people and companies from a CSV file using external refs.",
+        "requires": [
+          "crm:read:record.search",
+          "crm:write:person.create",
+          "crm:write:company.create",
+          "crm:write:record.update",
+          "files:read"
+        ]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "csv-import.local-file",
+        "name": "Local CSV file import",
+        "system": "csv",
+        "direction": "import"
+      }
+    ],
+    "uiSlots": []
+  }
+}
