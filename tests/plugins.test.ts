@@ -9,11 +9,14 @@ import {
 Deno.test("plugin examples are valid manifests", async () => {
   const followUps = await readManifest("examples/plugins/follow-up-reminders.json")
   const csvImport = await readManifest("examples/plugins/csv-import-helper.json")
+  const bareGmail = await readManifest("examples/plugins/bare-gmail.json")
 
   assertEquals(followUps.id, "example.follow-ups")
   assertEquals(csvImport.id, "example.csv-import")
+  assertEquals(bareGmail.id, "bare.gmail")
   assertEquals(followUps.contributes.workflows?.[0].writes, ["task.create"])
   assertEquals(csvImport.contributes.commands?.[0].requires.includes("files:read"), true)
+  assertEquals(bareGmail.contributes.syncs?.[0].system, "gmail")
 })
 
 Deno.test("plugin manifest validation rejects direct Storage API capability", () => {

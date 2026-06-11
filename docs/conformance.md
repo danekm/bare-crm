@@ -43,6 +43,7 @@ deno task test
 - `tests/import_export.test.ts`
 - `tests/plugins.test.ts`
 - `tests/mcp.test.ts`
+- `tests/gmail_plugin.test.ts`
 
 The same kernel and storage scenarios run against:
 
@@ -71,6 +72,7 @@ service. A live Postgres/Supabase integration suite can be added later behind ex
 | Import/export          | external-ref match/create/update/dry-run/export                | covered                |
 | Plugin manifests       | valid examples, forbidden storage access, unknown capabilities | covered                |
 | MCP adapter            | tool/resource mapping, structured errors, policy hook          | covered                |
+| Gmail plugin           | classifier, dedupe refs, kernel draft mapping                  | covered                |
 | Policy package         | allow/warn/block evaluation                                    | planned outside kernel |
 | Workflow package       | dispatch, idempotency, loop prevention                         | planned outside kernel |
 
@@ -93,6 +95,7 @@ Current failure coverage includes:
 - unknown plugin capabilities
 - MCP permission errors with required capability and repair hint
 - MCP resource workspace mismatch
+- Gmail ignored-message rules and promoted/suggested business signals
 
 Future failure coverage should include:
 

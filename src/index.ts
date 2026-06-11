@@ -19,6 +19,24 @@ export type {
   ImportExportOptions,
 } from "./import_export.ts"
 export {
+  classifyGmailMessage,
+  createGmailActivityInput,
+  createGmailContextRequest,
+  createGmailExternalRefs,
+  createGmailFollowUpTaskInput,
+  gmailMessageDedupeKey,
+} from "./gmail_plugin.ts"
+export type {
+  GmailActivityDraftInput,
+  GmailAddress,
+  GmailClassification,
+  GmailClassificationBucket,
+  GmailClassifierSettings,
+  GmailContextRequest,
+  GmailMessageSnapshot,
+  GmailTaskDraftInput,
+} from "./gmail_plugin.ts"
+export {
   createPluginExecutionContext,
   kernelCapabilitiesFromPlugin,
   PluginManifestError,

@@ -1,0 +1,111 @@
+{
+  "id": "bare.gmail",
+  "name": "Bare Gmail",
+  "version": "0.1.0",
+  "description": "Gmail-native channel plugin that captures meaningful customer memory without turning Bare into a second inbox.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:read:timeline.list",
+    "crm:read:relation.list",
+    "crm:read:event.list",
+    "crm:write:person.create",
+    "crm:write:company.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "crm:write:note.create",
+    "crm:write:file.create",
+    "crm:write:relation.create",
+    "crm:write:record.update",
+    "plugin:ui",
+    "plugin:sync",
+    "plugin:commands",
+    "plugin:policies",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "activity",
+        "key": "gmail",
+        "label": "Gmail provenance",
+        "type": "json"
+      }
+    ],
+    "policies": [
+      {
+        "id": "gmail.no-storage-bypass",
+        "name": "Gmail plugin writes through kernel APIs only",
+        "operations": [
+          "activity.create",
+          "task.create",
+          "note.create",
+          "record.update"
+        ],
+        "mode": "block"
+      }
+    ],
+    "commands": [
+      {
+        "id": "gmail.attach_to_deal",
+        "name": "Attach Gmail thread to deal",
+        "requires": [
+          "crm:read:record.search",
+          "crm:write:relation.create",
+          "crm:write:activity.create"
+        ]
+      },
+      {
+        "id": "gmail.create_lead",
+        "name": "Create lead from Gmail sender",
+        "requires": [
+          "crm:write:person.create",
+          "crm:write:company.create",
+          "crm:write:relation.create"
+        ]
+      },
+      {
+        "id": "gmail.create_follow_up",
+        "name": "Create follow-up task from Gmail thread",
+        "requires": [
+          "crm:write:task.create"
+        ]
+      },
+      {
+        "id": "gmail.save_activity",
+        "name": "Save Gmail message as CRM activity",
+        "requires": [
+          "crm:write:activity.create"
+        ]
+      },
+      {
+        "id": "gmail.ignore_sender",
+        "name": "Ignore Gmail sender",
+        "requires": [
+          "plugin:policies"
+        ]
+      },
+      {
+        "id": "gmail.ignore_domain",
+        "name": "Ignore Gmail domain",
+        "requires": [
+          "plugin:policies"
+        ]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "gmail.message-sync",
+        "name": "Gmail message sync",
+        "system": "gmail",
+        "direction": "import"
+      }
+    ],
+    "uiSlots": [
+      {
+        "id": "gmail.command-palette-actions",
+        "slot": "command.palette"
+      }
+    ]
+  }
+}

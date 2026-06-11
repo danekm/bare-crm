@@ -133,6 +133,7 @@ See `docs/` for the first architecture notes:
 - [Postgres and Supabase](docs/postgres-supabase.md)
 - [Import and export](docs/import-export.md)
 - [Channel strategy](docs/channel-strategy.md)
+- [Bare Gmail plugin](docs/gmail-plugin.md)
 - [Policies and workflows](docs/policies-workflows.md)
 - [Plugins](docs/plugins.md)
 - [MCP adapter](docs/mcp.md)
