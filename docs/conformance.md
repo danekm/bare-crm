@@ -35,6 +35,7 @@ Kernel coverage includes:
 - import/export helper behavior in strict capability mode
 - export through Read API with JSON Lines serialization
 - plugin manifest validation and example manifest coverage
+- MCP tool/resource mapping, strict permission failures, and optional policy hook behavior
 - idempotency replay behavior
 - idempotency scoping by workspace and write name
 

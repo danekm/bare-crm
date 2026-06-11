@@ -24,6 +24,30 @@ export {
   PluginManifestError,
   validatePluginManifest,
 } from "./plugins.ts"
+export {
+  callMcpTool,
+  createMcpExecutionContext,
+  createMcpSchema,
+  MCP_RESOURCE_TEMPLATES,
+  MCP_TOOL_DEFINITIONS,
+  readMcpResource,
+} from "./mcp.ts"
+export type {
+  BareCrmMcpSchema,
+  McpCallOptions,
+  McpCallResult,
+  McpErrorShape,
+  McpPolicyIssue,
+  McpReadToolName,
+  McpResourceReadResult,
+  McpResourceTemplate,
+  McpToolDefinition,
+  McpToolInputByName,
+  McpToolKind,
+  McpToolName,
+  McpToolResultByName,
+  McpWriteToolName,
+} from "./mcp.ts"
 export type {
   PluginCommandContribution,
   PluginContributions,
