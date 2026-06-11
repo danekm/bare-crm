@@ -11,6 +11,24 @@ Policies answer: should this Write API operation be allowed to proceed?
 
 They run before a write and cannot mutate data directly.
 
+## Kernel Invariants Versus Policy Rules
+
+| Example                                                         | Layer            | Why                             |
+| --------------------------------------------------------------- | ---------------- | ------------------------------- |
+| record has `id`, `type`, `workspaceId`, timestamps, and version | kernel invariant | required for storage and reads  |
+| write operation name is known                                   | kernel invariant | required for API stability      |
+| relation endpoints exist                                        | kernel invariant | prevents broken durable refs    |
+| update preserves record identity                                | kernel invariant | prevents accidental rewrites    |
+| archive hides record from default reads                         | kernel invariant | universal read behavior         |
+| successful write appends an event                               | kernel invariant | audit history must be durable   |
+| context workspace matches input workspace                       | kernel invariant | prevents cross-workspace writes |
+| every deal must have a company                                  | policy rule      | sales-process opinion           |
+| every company must have a primary contact                       | policy rule      | workspace-specific completeness |
+| won deal requires `closedAt`                                    | policy rule      | pipeline-specific rule          |
+| lost deal requires a reason                                     | policy rule      | reporting/process preference    |
+| high-value deal requires approval                               | policy rule      | governance preference           |
+| person must have email before outreach                          | policy rule      | channel/process rule            |
+
 ```ts
 policy({
   id: "deal-company-required",
@@ -32,6 +50,32 @@ policy({
 ```
 
 Policies are not kernel invariants. They are workspace/plugin behavior.
+
+## Policy Result Contract
+
+Policy layers should return stable, structured results that UIs, MCP tools, Noros, plugins, and CLIs
+can explain and repair.
+
+```ts
+type PolicyResult =
+  | { ok: true; issues?: PolicyIssue[] }
+  | {
+    ok: false
+    issues: PolicyIssue[]
+  }
+
+type PolicyIssue = {
+  code: string
+  message: string
+  severity: "warn" | "block"
+  field?: string
+  ref?: EntityRef
+  suggestedFix?: WriteDraft
+}
+```
+
+Warning policies should not stop the Write API call. Blocking policies should stop before the kernel
+commit and return issues to the caller. Policies still do not mutate data directly.
 
 ## Workflows
 
@@ -58,6 +102,29 @@ workflow({
 
 A workflow does not require a model. Most workflows should be deterministic event handlers.
 
+Workflow contract sketch:
+
+```ts
+type Workflow = {
+  id: string
+  version: string
+  trigger: string
+  permissions: Capability[]
+  idempotencyKey?: (event: CrmEvent) => string
+  run(ctx: WorkflowContext): Promise<void>
+}
+```
+
+Deterministic examples:
+
+- when `activity.created` with `kind: "meeting"`, create a follow-up task
+- when `deal.created` with `status: "open"` and no owner, create an assignment task
+- when `person.created` with a primary email, add a `lead` tag through `record.update`
+- when `task.created` with urgent priority, create a note for audit context
+
+Workflow writes should use idempotency keys derived from the triggering event, for example
+`workflow:meeting-follow-up:${event.id}`.
+
 ## Background Jobs
 
 Background jobs are optional async tasks outside the core:
@@ -81,3 +148,10 @@ Jobs use the Write API and Read API. They do not bypass the kernel.
 - permissions still apply inside plugins and workflows
 - loop guards should prevent infinite event chains
 - human approval can pause an optional workflow
+
+Loop guards can be simple at first:
+
+- do not react to events created by the same workflow unless explicitly allowed
+- use idempotency keys for derived writes
+- store optional run records outside the kernel
+- cap retry attempts in the workflow package
