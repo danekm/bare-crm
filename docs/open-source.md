@@ -48,7 +48,7 @@ The README should explain:
 - that it is a tiny CRM kernel, not a full CRM app
 - the Pi-inspired philosophy: small runtime, explicit primitives, extensible packages
 - the four core primitives: Write API, Read API, Event Log, Storage API
-- the core entity set: person, company, deal, activity, note, task, file, relation
+- the core entity set: person, company, deal, collection, activity, note, task, file, relation
 - SQLite and Postgres/Supabase as first-class storage implementations
 - MCP-native but not MCP-dependent
 - Noros-compatible but not Noros-dependent

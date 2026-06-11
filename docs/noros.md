@@ -68,6 +68,7 @@ Write tools:
 - `create_person`
 - `create_company`
 - `create_deal`
+- `create_collection`
 - `create_activity`
 - `create_note`
 - `create_task`

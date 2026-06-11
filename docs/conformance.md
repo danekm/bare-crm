@@ -9,6 +9,9 @@ behavioral expectations wherever possible.
 Actual plugins are not part of the kernel conformance suite. A plugin can have its own tests in this
 repo, but those tests prove that plugin package, not the kernel contract.
 
+For the broader testing map, including privacy, migrations, live Postgres, canaries, and shadow
+rehearsals, see [Test Portfolio](test-portfolio.md).
+
 ## Test Architecture
 
 ```mermaid
@@ -49,6 +52,7 @@ Kernel/conformance contract tests:
 - `tests/storage.test.ts`
 - `tests/import_export.test.ts`
 - `tests/plugins.test.ts`
+- `tests/extensions.test.ts`
 - `tests/mcp.test.ts`
 
 Project/package tests that are not part of kernel conformance:
@@ -76,11 +80,13 @@ service. A live Postgres/Supabase integration suite can be added later behind ex
 | Workspace isolation      | records, relations, reads, events, idempotency                 | covered                |
 | Archive behavior         | default reads hide archived records and relations              | covered                |
 | Relations                | endpoints must exist and relation reads work from both sides   | covered                |
+| Collections              | group related records without kernel profile logic             | covered                |
 | Optimistic concurrency   | stale versions conflict at storage boundary                    | covered                |
 | Idempotency              | write replay and workspace/write-name scoping                  | covered                |
 | Permissions              | strict context, actor, read/write capabilities                 | covered                |
 | Import/export            | external-ref match/create/update/dry-run/export                | covered                |
 | Plugin manifest contract | valid examples, forbidden storage access, unknown capabilities | covered                |
+| Extension Host           | install/enable, capabilities, profiles, cursors, secrets       | covered                |
 | MCP adapter              | tool/resource mapping, structured errors, policy hook          | covered                |
 | Policy package           | allow/warn/block evaluation                                    | planned outside kernel |
 | Workflow package         | dispatch, idempotency, loop prevention                         | planned outside kernel |
@@ -93,6 +99,7 @@ Current failure coverage includes:
 
 - duplicate record IDs
 - missing relation endpoints
+- missing collection related refs
 - workspace mismatch between context and input
 - missing strict-mode context
 - missing strict-mode actor

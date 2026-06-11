@@ -2,6 +2,7 @@ export type EntityType =
   | "person"
   | "company"
   | "deal"
+  | "collection"
   | "activity"
   | "note"
   | "task"
@@ -88,6 +89,21 @@ export type Deal = BaseRecord<"deal"> & {
   pipelineId?: string
 }
 
+export type CollectionOutcome = {
+  code: string
+  summary?: string
+  occurredAt?: string
+  related?: EntityRef[]
+}
+
+export type Collection = BaseRecord<"collection"> & {
+  title: string
+  kind: string
+  status?: string
+  related?: EntityRef[]
+  outcome?: CollectionOutcome
+}
+
 export type Activity = BaseRecord<"activity"> & {
   kind: "email" | "call" | "meeting" | "message" | "note" | "task_completed" | "custom"
   subject?: string
@@ -134,6 +150,7 @@ export type AnyRecord =
   | Person
   | Company
   | Deal
+  | Collection
   | Activity
   | Note
   | Task
@@ -167,6 +184,7 @@ export type WriteInputByName = {
   "person.create": CreateInput<Person>
   "company.create": CreateInput<Company>
   "deal.create": CreateInput<Deal>
+  "collection.create": CreateInput<Collection>
   "activity.create": CreateInput<Activity>
   "note.create": CreateInput<Note>
   "task.create": CreateInput<Task>

@@ -43,6 +43,7 @@ The executable registry lives in `src/mcp.ts` as `MCP_TOOL_DEFINITIONS`.
 | `create_person`      | write  | `person.create`      | yes     |
 | `create_company`     | write  | `company.create`     | yes     |
 | `create_deal`        | write  | `deal.create`        | yes     |
+| `create_collection`  | write  | `collection.create`  | yes     |
 | `create_activity`    | write  | `activity.create`    | yes     |
 | `create_note`        | write  | `note.create`        | yes     |
 | `create_task`        | write  | `task.create`        | yes     |
@@ -150,6 +151,23 @@ await callMcpTool(
     source: "agent",
   },
   { context, idempotencyKey: "agent:create-person:ada@example.com" },
+)
+```
+
+Create collection:
+
+```ts
+await callMcpTool(
+  crm,
+  "create_collection",
+  {
+    workspaceId: "workspace_1",
+    title: "Acme renewal discussion",
+    kind: "sales.renewal",
+    related: [{ type: "deal", id: "deal_1" }],
+    source: "agent",
+  },
+  { context, idempotencyKey: "agent:create-collection:acme-renewal" },
 )
 ```
 

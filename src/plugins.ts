@@ -8,6 +8,7 @@ export type PluginRuntimeCapability =
   | "plugin:commands"
   | "plugin:ui"
   | "plugin:sync"
+  | "plugin:profiles"
   | "network:external"
   | "secrets:read"
   | "files:read"
@@ -19,6 +20,15 @@ export type PluginFieldContribution = {
   label: string
   type: "string" | "number" | "boolean" | "datetime" | "json"
   required?: boolean
+}
+
+export type PluginCollectionProfileContribution = {
+  id: string
+  name: string
+  allowedStatuses?: string[]
+  allowedOutcomes?: string[]
+  requiredRelated?: EntityType[]
+  optionalRelated?: EntityType[]
 }
 
 export type PluginPolicyContribution = {
@@ -56,6 +66,7 @@ export type PluginSyncContribution = {
 
 export type PluginContributions = {
   fields?: PluginFieldContribution[]
+  collectionProfiles?: PluginCollectionProfileContribution[]
   policies?: PluginPolicyContribution[]
   workflows?: PluginWorkflowContribution[]
   commands?: PluginCommandContribution[]
@@ -95,13 +106,22 @@ const allowedRuntimeCapabilities = new Set<PluginRuntimeCapability>([
   "plugin:commands",
   "plugin:ui",
   "plugin:sync",
+  "plugin:profiles",
   "network:external",
   "secrets:read",
   "files:read",
   "files:write",
 ])
 
-const contributionKeys = ["fields", "policies", "workflows", "commands", "uiSlots", "syncs"]
+const contributionKeys = [
+  "fields",
+  "collectionProfiles",
+  "policies",
+  "workflows",
+  "commands",
+  "uiSlots",
+  "syncs",
+]
 
 export function validatePluginManifest(value: unknown): PluginManifest {
   if (!isRecord(value)) {

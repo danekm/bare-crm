@@ -110,6 +110,8 @@ The timeline read returns records related to a target record:
 
 - the direct target record when it matches the read
 - relation records touching the target
+- collections that include the target record
+- records included by a target collection's `related` refs
 - activities with `related` or `participants`
 - notes, tasks, and files with `related`
 

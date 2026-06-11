@@ -1,7 +1,7 @@
 # Bare CRM
 
 Bare CRM is an experimental CRM kernel: a small, stable Write API, Read API, Event Log, and Storage
-API for people, companies, deals, activities, notes, tasks, files, and relationships.
+API for people, companies, deals, collections, activities, notes, tasks, files, and relationships.
 
 The goal is not to ship a full CRM first. The goal is to make the smallest useful core that other
 products, agents, MCP servers, automations, and plugins can build on without depending on a bloated
@@ -51,6 +51,7 @@ interfaces without becoming a swollen CRM application itself.
 - `Person`
 - `Company`
 - `Deal`
+- `Collection`
 - `Activity`
 - `Note`
 - `Task`
@@ -81,6 +82,23 @@ const people = await crm.read("record.search", {
 The first implementation includes the core APIs plus in-memory, SQLite, and Postgres/Supabase
 Storage API implementations.
 
+## Install
+
+For package and CLI installation, see [Install](docs/install.md).
+
+Local development:
+
+```sh
+deno task crm -- help
+```
+
+Intended package install after publish:
+
+```sh
+deno add jsr:@bare-crm/kernel
+deno install -g --allow-read --allow-write --allow-env --allow-ffi -n crm jsr:@bare-crm/kernel/cli
+```
+
 ## Package Direction
 
 The initial repository starts as one Deno package. As the surface hardens, the likely package split
@@ -91,6 +109,8 @@ is:
 - `@bare-crm/postgres` for the Postgres/Supabase Storage API implementation
 - `@bare-crm/mcp` for optional model and agent access
 - `@bare-crm/plugin-sdk` for optional extensions
+- `@bare-crm/extensions` for the optional Extension Host boundary around plugin lifecycle,
+  capabilities, schema/profile contributions, event subscriptions, secrets, and sync state
 - `@bare-crm/workflows` for optional event listeners and job helpers
 - `@bare-crm/cli` for optional local operation and development
 
@@ -114,10 +134,14 @@ This repository uses Deno so the reference kernel can stay dependency-light.
 deno fmt
 deno task check
 deno task test
+deno task crm -- help
 ```
 
 `deno task test` grants the explicit permissions required by the SQLite native dependency and keeps
 network access scoped to the GitHub release hosts used for that dependency.
+
+The local operator CLI is intentionally small and boring. See [CLI](docs/cli.md) for the current
+`crm doctor`, schema, and plugin validation commands.
 
 ## Design Notes
 
@@ -132,16 +156,22 @@ See `docs/` for the first architecture notes:
 - [Storage API](docs/storage-api.md)
 - [SQLite](docs/sqlite.md)
 - [Postgres and Supabase](docs/postgres-supabase.md)
+- [Install](docs/install.md)
 - [Import and export](docs/import-export.md)
 - [Channel strategy](docs/channel-strategy.md)
 - [Bare Gmail plugin](docs/gmail-plugin.md)
 - [Policies and workflows](docs/policies-workflows.md)
 - [Plugins](docs/plugins.md)
 - [Plugin development](docs/plugin-development.md)
+- [Extension Host](docs/extension-host.md)
 - [MCP adapter](docs/mcp.md)
+- [Admin API](docs/admin-api.md)
+- [CLI](docs/cli.md)
 - [Noros integration](docs/noros.md)
 - [Open source plan](docs/open-source.md)
 - [Permissions](docs/permissions.md)
+- [Privacy safety](docs/privacy-safety.md)
 - [Conformance tests](docs/conformance.md)
+- [Test portfolio](docs/test-portfolio.md)
 
 The Linear project tracks implementation tickets.

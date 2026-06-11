@@ -16,6 +16,7 @@ Deno.test("MCP tool registry maps tools to Read API and Write API operations", (
       ["create_person", "write", "person.create", true],
       ["create_company", "write", "company.create", true],
       ["create_deal", "write", "deal.create", true],
+      ["create_collection", "write", "collection.create", true],
       ["create_activity", "write", "activity.create", true],
       ["create_note", "write", "note.create", true],
       ["create_task", "write", "task.create", true],

@@ -1,4 +1,12 @@
-import type { Activity, CreateInput, EntityRef, ExternalRef, SourceKind, Task } from "./types.ts"
+import type {
+  Activity,
+  Collection,
+  CreateInput,
+  EntityRef,
+  ExternalRef,
+  SourceKind,
+  Task,
+} from "./types.ts"
 
 export type GmailAddress = {
   email: string
@@ -50,6 +58,13 @@ export type GmailActivityDraftInput = {
   message: GmailMessageSnapshot
   classification: GmailClassification
   related?: EntityRef[]
+}
+
+export type GmailCollectionDraftInput = {
+  workspaceId: string
+  message: GmailMessageSnapshot
+  related?: EntityRef[]
+  status?: string
 }
 
 export type GmailTaskDraftInput = {
@@ -210,6 +225,26 @@ export function createGmailActivityInput(
         from: message.from,
         to: message.to,
         cc: message.cc,
+      },
+    },
+  }
+}
+
+export function createGmailThreadCollectionInput(
+  input: GmailCollectionDraftInput,
+): CreateInput<Collection> {
+  return {
+    workspaceId: input.workspaceId,
+    title: input.message.subject ?? "Gmail thread",
+    kind: "gmail.thread",
+    status: input.status ?? "open",
+    related: input.related,
+    source: "plugin",
+    externalRefs: [gmailThreadExternalRef(input.message)],
+    custom: {
+      gmail: {
+        threadId: input.message.threadId,
+        firstMessageId: input.message.id,
       },
     },
   }

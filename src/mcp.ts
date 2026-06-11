@@ -23,6 +23,7 @@ export type McpWriteToolName =
   | "create_person"
   | "create_company"
   | "create_deal"
+  | "create_collection"
   | "create_activity"
   | "create_note"
   | "create_task"
@@ -70,6 +71,7 @@ export type McpToolInputByName = {
   create_person: WriteInputByName["person.create"]
   create_company: WriteInputByName["company.create"]
   create_deal: WriteInputByName["deal.create"]
+  create_collection: WriteInputByName["collection.create"]
   create_activity: WriteInputByName["activity.create"]
   create_note: WriteInputByName["note.create"]
   create_task: WriteInputByName["task.create"]
@@ -88,6 +90,7 @@ export type McpToolResultByName = {
   create_person: WriteResultByName["person.create"]
   create_company: WriteResultByName["company.create"]
   create_deal: WriteResultByName["deal.create"]
+  create_collection: WriteResultByName["collection.create"]
   create_activity: WriteResultByName["activity.create"]
   create_note: WriteResultByName["note.create"]
   create_task: WriteResultByName["task.create"]
@@ -144,6 +147,7 @@ const writeToolOperations = {
   create_person: "person.create",
   create_company: "company.create",
   create_deal: "deal.create",
+  create_collection: "collection.create",
   create_activity: "activity.create",
   create_note: "note.create",
   create_task: "task.create",
@@ -184,6 +188,14 @@ export const MCP_TOOL_DEFINITIONS: McpToolDefinition[] = [
     mutates: true,
     description: "Create one deal record through the Write API.",
     repairHint: "Provide workspaceId, name, stage, and status.",
+  },
+  {
+    name: "create_collection",
+    kind: "write",
+    operation: "collection.create",
+    mutates: true,
+    description: "Create one collection record through the Write API.",
+    repairHint: "Provide workspaceId, title, and kind. Related refs must exist.",
   },
   {
     name: "create_activity",
@@ -419,11 +431,22 @@ export async function readMcpResource(
 
 export function createMcpSchema(): BareCrmMcpSchema {
   return {
-    entityTypes: ["person", "company", "deal", "activity", "note", "task", "file", "relation"],
+    entityTypes: [
+      "person",
+      "company",
+      "deal",
+      "collection",
+      "activity",
+      "note",
+      "task",
+      "file",
+      "relation",
+    ],
     writeOperations: [
       "person.create",
       "company.create",
       "deal.create",
+      "collection.create",
       "activity.create",
       "note.create",
       "task.create",
@@ -595,6 +618,7 @@ function parseEntityType(value: string): EntityType {
     value === "person" ||
     value === "company" ||
     value === "deal" ||
+    value === "collection" ||
     value === "activity" ||
     value === "note" ||
     value === "task" ||

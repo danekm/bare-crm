@@ -10,6 +10,7 @@
     "crm:read:event.list",
     "crm:write:person.create",
     "crm:write:company.create",
+    "crm:write:collection.create",
     "crm:write:activity.create",
     "crm:write:task.create",
     "crm:write:note.create",
@@ -20,6 +21,7 @@
     "plugin:sync",
     "plugin:commands",
     "plugin:policies",
+    "plugin:profiles",
     "network:external",
     "secrets:read"
   ],
@@ -32,12 +34,22 @@
         "type": "json"
       }
     ],
+    "collectionProfiles": [
+      {
+        "id": "gmail.thread",
+        "name": "Gmail thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["no_action", "responded", "converted", "archived"],
+        "optionalRelated": ["person", "company", "deal", "activity", "note", "task", "file"]
+      }
+    ],
     "policies": [
       {
         "id": "gmail.no-storage-bypass",
         "name": "Gmail plugin writes through kernel APIs only",
         "operations": [
           "activity.create",
+          "collection.create",
           "task.create",
           "note.create",
           "record.update"

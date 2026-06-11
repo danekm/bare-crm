@@ -21,10 +21,16 @@ export function createFakePostgresStorage(): FakePostgresStorage {
   }
 }
 
-class FakePostgresClient implements PostgresConnection {
+export function createFakePostgresClient(): FakePostgresClient {
+  return new FakePostgresClient()
+}
+
+export class FakePostgresClient implements PostgresConnection {
   records = new Map<StoreKey, AnyRecord>()
   events: CrmEvent[] = []
   idempotency = new Map<string, AnyRecord>()
+  migrations = new Map<string, { name: string; appliedAt: string }>()
+  migrationsLedgerExists = false
   queries: string[] = []
 
   #snapshot:
@@ -32,6 +38,8 @@ class FakePostgresClient implements PostgresConnection {
       records: Map<StoreKey, AnyRecord>
       events: CrmEvent[]
       idempotency: Map<string, AnyRecord>
+      migrations: Map<string, { name: string; appliedAt: string }>
+      migrationsLedgerExists: boolean
     }
     | undefined
 
@@ -49,6 +57,8 @@ class FakePostgresClient implements PostgresConnection {
         records: new Map(this.records),
         events: [...this.events],
         idempotency: new Map(this.idempotency),
+        migrations: new Map(this.migrations),
+        migrationsLedgerExists: this.migrationsLedgerExists,
       }
       return { rows: [] }
     }
@@ -61,11 +71,42 @@ class FakePostgresClient implements PostgresConnection {
         this.records = this.#snapshot.records
         this.events = this.#snapshot.events
         this.idempotency = this.#snapshot.idempotency
+        this.migrations = this.#snapshot.migrations
+        this.migrationsLedgerExists = this.#snapshot.migrationsLedgerExists
         this.#snapshot = undefined
       }
       return { rows: [] }
     }
-    if (normalized.startsWith("create ")) return { rows: [] }
+    if (normalized.startsWith("create ")) {
+      if (normalized.includes("bare_crm_migrations")) {
+        this.migrationsLedgerExists = true
+      }
+      return { rows: [] }
+    }
+
+    if (normalized.startsWith("select to_regclass('bare_crm_migrations')")) {
+      return rows(
+        this.migrationsLedgerExists ? [{ migration_table: "bare_crm_migrations" }] : [{
+          migration_table: null,
+        }],
+      )
+    }
+
+    if (normalized.startsWith("select version from bare_crm_migrations")) {
+      return rows(
+        Array.from(this.migrations.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([version]) => ({ version })),
+      )
+    }
+
+    if (normalized.startsWith("insert into bare_crm_migrations")) {
+      this.migrations.set(String(queryArgs[0]), {
+        name: String(queryArgs[1]),
+        appliedAt: String(queryArgs[2]),
+      })
+      return { rows: [] }
+    }
 
     if (normalized.startsWith("select version from bare_crm_records")) {
       const record = this.records.get(recordKey(queryArgs[0], queryArgs[1], queryArgs[2]))

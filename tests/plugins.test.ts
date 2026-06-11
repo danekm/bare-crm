@@ -17,6 +17,7 @@ Deno.test("plugin examples are valid manifests", async () => {
   assertEquals(followUps.contributes.workflows?.[0].writes, ["task.create"])
   assertEquals(csvImport.contributes.commands?.[0].requires.includes("files:read"), true)
   assertEquals(bareGmail.contributes.syncs?.[0].system, "gmail")
+  assertEquals(bareGmail.contributes.collectionProfiles?.[0].id, "gmail.thread")
 })
 
 Deno.test("plugin manifest validation rejects direct Storage API capability", () => {

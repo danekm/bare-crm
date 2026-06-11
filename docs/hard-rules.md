@@ -16,7 +16,7 @@ change shape, or get a deliberate architecture review before implementation.
 | `HR-005` | The kernel has no UI, embedded model, agent runtime, scheduler, or workflow runner.    | docs and package boundaries                                    |
 | `HR-006` | Provider-specific state stays outside kernel entities.                                 | docs, plugin examples, Gmail helper tests                      |
 | `HR-007` | Business-specific CRM rules are policies, not kernel invariants.                       | docs and kernel behavior tests                                 |
-| `HR-008` | Database schemas are owned by official storage adapters and schema helpers/migrations. | Postgres helper now; SQLite helper/migrations planned          |
+| `HR-008` | Database schemas are owned by official storage adapters and schema helpers/migrations. | Postgres helper; SQLite helper/migration ledger                |
 | `HR-009` | Every first-class storage adapter must pass the shared conformance suite.              | memory, SQLite, and Postgres-compatible tests                  |
 | `HR-010` | Optional adapters must be gateways over kernel APIs, not alternate runtimes.           | MCP/plugin/import docs and tests                               |
 
@@ -51,6 +51,7 @@ Examples:
 - `person.create`
 - `company.create`
 - `deal.create`
+- `collection.create`
 - `activity.create`
 - `task.create`
 - `note.create`
@@ -123,7 +124,7 @@ Examples that must not become kernel entities by default:
 - sync cursors
 
 The kernel stores what the source means for the customer relationship: activities, notes, tasks,
-files, relations, people, companies, and deals.
+files, relations, collections, people, companies, and deals.
 
 ## HR-007: Business Rules Are Policies
 
@@ -135,6 +136,7 @@ Kernel invariants:
 - workspace ownership
 - typed entity refs
 - relation endpoint existence
+- collection related/outcome ref existence
 - version advancement
 - archive behavior
 - event append after successful writes
@@ -147,6 +149,7 @@ Policy rules:
 - won deal requires `closedAt`
 - person must have email before outreach
 - high-value deal requires approval
+- collection kind/status/outcome must match a workspace profile
 
 Policies can warn or block before a write commits. Policies do not mutate state directly.
 
@@ -158,7 +161,7 @@ Allowed:
 
 - `installPostgresSchema`
 - `getPostgresSchemaSql`
-- future SQLite schema helper/migration files
+- SQLite schema migrations through official adapter helpers
 - future `bare-crm db init` command that calls official helpers
 
 Not allowed:
@@ -168,8 +171,8 @@ Not allowed:
 - direct SQL migrations that bypass official schema files
 - provider-specific columns in core record tables
 
-Postgres already exports schema SQL. SQLite currently has an internal explicit schema; exporting it
-and adding canonical migration files should be the next database-hardening step.
+Postgres exports schema SQL. SQLite applies official linear migrations and records them in the
+`bare_crm_migrations` ledger table.
 
 ## HR-009: Storage Adapters Pass Conformance
 

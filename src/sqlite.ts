@@ -1,8 +1,26 @@
-import { type BindValue, Database } from "jsr:@db/sqlite"
+import { type BindValue, Database } from "jsr:@db/sqlite@^0.13.0"
 import type { AnyRecord, CrmEvent, EventListInput, SearchInput } from "./types.ts"
 import { type StorageApi, StorageConflictError, type StorageTx } from "./storage.ts"
 
 type Row = Record<string, unknown>
+
+export type SqliteMigration = {
+  version: string
+  name: string
+  statements: string[]
+}
+
+export type SqliteMigrationStatus = {
+  adapter: "sqlite"
+  currentVersion: string | null
+  applied: string[]
+  pending: Array<Pick<SqliteMigration, "version" | "name">>
+}
+
+export type SqliteMigrationResult = SqliteMigrationStatus & {
+  appliedNow: Array<Pick<SqliteMigration, "version" | "name">>
+  dryRun: boolean
+}
 
 export type SqliteStorage = StorageApi & {
   close(): void
@@ -10,7 +28,7 @@ export type SqliteStorage = StorageApi & {
 
 export function createSqliteStorage(path: string | URL): SqliteStorage {
   const db = new Database(path)
-  installSchema(db)
+  migrateOpenDatabase(db)
 
   return {
     async transaction<T>(fn: (tx: StorageTx) => Promise<T>): Promise<T> {
@@ -35,8 +53,12 @@ export function createSqliteMemoryStorage(): SqliteStorage {
   return createSqliteStorage(":memory:")
 }
 
-function installSchema(db: Database): void {
-  db.exec(`
+const sqliteMigrations: SqliteMigration[] = [
+  {
+    version: "001",
+    name: "initial_schema",
+    statements: [
+      `
     create table if not exists records (
       workspace_id text not null,
       type text not null,
@@ -50,22 +72,13 @@ function installSchema(db: Database): void {
       record_json text not null,
       primary key (workspace_id, type, id)
     )
-  `)
-  db.exec("create index if not exists records_workspace_type_idx on records(workspace_id, type)")
-  db.exec(
-    "create index if not exists records_workspace_updated_idx on records(workspace_id, updated_at)",
-  )
-  db.exec(
-    "create index if not exists records_workspace_archived_idx on records(workspace_id, archived_at)",
-  )
-  db.exec(
-    "create index if not exists records_workspace_owner_idx on records(workspace_id, owner_id)",
-  )
-  db.exec(
-    "create index if not exists records_workspace_source_idx on records(workspace_id, source)",
-  )
-
-  db.exec(`
+  `,
+      "create index if not exists records_workspace_type_idx on records(workspace_id, type)",
+      "create index if not exists records_workspace_updated_idx on records(workspace_id, updated_at)",
+      "create index if not exists records_workspace_archived_idx on records(workspace_id, archived_at)",
+      "create index if not exists records_workspace_owner_idx on records(workspace_id, owner_id)",
+      "create index if not exists records_workspace_source_idx on records(workspace_id, source)",
+      `
     create table if not exists events (
       workspace_id text not null,
       id text primary key,
@@ -81,24 +94,146 @@ function installSchema(db: Database): void {
       occurred_at text not null,
       event_json text not null
     )
-  `)
-  db.exec(
-    "create index if not exists events_workspace_occurred_idx on events(workspace_id, occurred_at)",
-  )
-  db.exec("create index if not exists events_workspace_name_idx on events(workspace_id, name)")
-  db.exec(
-    "create index if not exists events_workspace_record_idx on events(workspace_id, record_type, record_id)",
-  )
-  db.exec(
-    "create index if not exists events_workspace_correlation_idx on events(workspace_id, correlation_id)",
-  )
-
-  db.exec(`
+  `,
+      "create index if not exists events_workspace_occurred_idx on events(workspace_id, occurred_at)",
+      "create index if not exists events_workspace_name_idx on events(workspace_id, name)",
+      "create index if not exists events_workspace_record_idx on events(workspace_id, record_type, record_id)",
+      "create index if not exists events_workspace_correlation_idx on events(workspace_id, correlation_id)",
+      `
     create table if not exists idempotency (
       key text primary key,
       result_json text not null
     )
+  `,
+    ],
+  },
+]
+
+export class SqliteMigrationError extends Error {
+  constructor(
+    readonly migration: Pick<SqliteMigration, "version" | "name">,
+    message: string,
+  ) {
+    super(message)
+    this.name = "SqliteMigrationError"
+  }
+}
+
+export function getSqliteMigrations(): SqliteMigration[] {
+  return sqliteMigrations.map((migration) => ({
+    ...migration,
+    statements: [...migration.statements],
+  }))
+}
+
+export function getSqliteMigrationStatus(path: string | URL): SqliteMigrationStatus {
+  const db = new Database(path)
+  try {
+    return migrationStatus(db)
+  } finally {
+    db.close()
+  }
+}
+
+export function migrateSqliteDatabase(
+  path: string | URL,
+  options: { dryRun?: boolean; now?: () => Date } = {},
+): SqliteMigrationResult {
+  const db = new Database(path)
+  try {
+    if (options.dryRun) {
+      const status = migrationStatus(db)
+      return { ...status, appliedNow: [], dryRun: true }
+    }
+
+    const appliedNow = migrateOpenDatabase(db, options.now)
+    const status = migrationStatus(db)
+    return { ...status, appliedNow, dryRun: false }
+  } finally {
+    db.close()
+  }
+}
+
+function migrateOpenDatabase(
+  db: Database,
+  now: () => Date = () => new Date(),
+): Array<Pick<SqliteMigration, "version" | "name">> {
+  db.exec("begin immediate")
+  const appliedNow: Array<Pick<SqliteMigration, "version" | "name">> = []
+
+  try {
+    installMigrationLedger(db)
+    const applied = new Set(readAppliedMigrationVersions(db))
+
+    for (const migration of sqliteMigrations) {
+      if (applied.has(migration.version)) continue
+
+      try {
+        for (const statement of migration.statements) {
+          db.exec(statement)
+        }
+        db.prepare(`
+          insert into bare_crm_migrations (version, name, applied_at)
+          values (?, ?, ?)
+        `).run(migration.version, migration.name, now().toISOString())
+        appliedNow.push({ version: migration.version, name: migration.name })
+      } catch (error) {
+        throw new SqliteMigrationError(
+          { version: migration.version, name: migration.name },
+          error instanceof Error ? error.message : String(error),
+        )
+      }
+    }
+
+    db.exec("commit")
+    return appliedNow
+  } catch (error) {
+    db.exec("rollback")
+    throw error
+  }
+}
+
+function installMigrationLedger(db: Database): void {
+  db.exec(`
+    create table if not exists bare_crm_migrations (
+      version text primary key,
+      name text not null,
+      applied_at text not null
+    )
   `)
+}
+
+function migrationStatus(db: Database): SqliteMigrationStatus {
+  const applied = migrationLedgerExists(db) ? readAppliedMigrationVersions(db) : []
+  const appliedSet = new Set(applied)
+  const pending = sqliteMigrations
+    .filter((migration) => !appliedSet.has(migration.version))
+    .map(({ version, name }) => ({ version, name }))
+
+  return {
+    adapter: "sqlite",
+    currentVersion: applied.at(-1) ?? null,
+    applied,
+    pending,
+  }
+}
+
+function migrationLedgerExists(db: Database): boolean {
+  const row = db.prepare(`
+    select name
+    from sqlite_master
+    where type = 'table' and name = 'bare_crm_migrations'
+  `).get() as Row | undefined
+  return Boolean(row)
+}
+
+function readAppliedMigrationVersions(db: Database): string[] {
+  const rows = db.prepare(`
+    select version
+    from bare_crm_migrations
+    order by version asc
+  `).all() as Row[]
+  return rows.map((row) => String(row.version))
 }
 
 function createTx(db: Database): StorageTx {

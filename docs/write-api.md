@@ -4,6 +4,7 @@ The Write API is the only official way to change CRM facts.
 
 ```ts
 await crm.write("person.create", input)
+await crm.write("collection.create", { workspaceId, title, kind, related })
 await crm.write("record.update", { workspaceId, ref, patch })
 await crm.write("relation.create", { workspaceId, from, to, kind })
 await crm.write("record.archive", { workspaceId, ref })
@@ -14,6 +15,7 @@ await crm.write("record.archive", { workspaceId, ref })
 - `person.create`
 - `company.create`
 - `deal.create`
+- `collection.create`
 - `activity.create`
 - `note.create`
 - `task.create`
@@ -39,7 +41,8 @@ events.
 
 ## Idempotency
 
-Writes may provide an idempotency key.
+Writes may provide an idempotency key. If the same write is retried with the same key, the kernel
+returns the original committed result instead of creating a duplicate.
 
 ```ts
 await crm.write("person.create", input, {
@@ -47,8 +50,8 @@ await crm.write("person.create", input, {
 })
 ```
 
-Repeated writes with the same workspace, operation name, and idempotency key return the original
-committed result.
+Idempotency keys are scoped by workspace and operation name, so different operations can use the
+same source key without colliding.
 
 ## Errors
 

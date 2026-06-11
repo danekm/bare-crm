@@ -1,5 +1,27 @@
 export { createCrmKernel, CrmKernelError, CrmNotFoundError, CrmPermissionError } from "./kernel.ts"
 export type { CrmKernelOptions } from "./kernel.ts"
+export { createCrmAdmin } from "./admin.ts"
+export type {
+  AdminDoctorCheck,
+  AdminDoctorReport,
+  AdminEventMetadata,
+  AdminPluginValidationResult,
+  AdminStatus,
+  CrmAdmin,
+  CrmAdminOptions,
+} from "./admin.ts"
+export { createExtensionHost, createMemorySecretStore, ExtensionHostError } from "./extensions.ts"
+export type {
+  CollectionProfileValidationIssue,
+  CollectionProfileValidationResult,
+  ExtensionEventCursor,
+  ExtensionHost,
+  ExtensionHostOptions,
+  ExtensionInstallInput,
+  ExtensionPluginState,
+  SecretRef,
+  SecretStore,
+} from "./extensions.ts"
 export {
   exportJsonLines,
   exportRecords,
@@ -24,6 +46,7 @@ export {
   createGmailContextRequest,
   createGmailExternalRefs,
   createGmailFollowUpTaskInput,
+  createGmailThreadCollectionInput,
   gmailMessageDedupeKey,
 } from "./gmail_plugin.ts"
 export type {
@@ -32,6 +55,7 @@ export type {
   GmailClassification,
   GmailClassificationBucket,
   GmailClassifierSettings,
+  GmailCollectionDraftInput,
   GmailContextRequest,
   GmailMessageSnapshot,
   GmailTaskDraftInput,
@@ -67,6 +91,7 @@ export type {
   McpWriteToolName,
 } from "./mcp.ts"
 export type {
+  PluginCollectionProfileContribution,
   PluginCommandContribution,
   PluginContributions,
   PluginFieldContribution,

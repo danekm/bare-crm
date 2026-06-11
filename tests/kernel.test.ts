@@ -62,6 +62,14 @@ for (const scenario of kernelScenarios) {
         stage: "qualified",
         status: "open",
       })
+      const collection = await crm.write("collection.create", {
+        workspaceId: "workspace_1",
+        id: "collection_1",
+        title: "Difference Engine rollout context",
+        kind: "sales.rollout",
+        status: "open",
+        related: [{ type: "deal", id: deal.id }],
+      })
       const activity = await crm.write("activity.create", {
         workspaceId: "workspace_1",
         id: "activity_1",
@@ -97,8 +105,20 @@ for (const scenario of kernelScenarios) {
       })
 
       assertEquals(
-        [person, company, deal, activity, note, task, file, relation].map((record) => record.type),
-        ["person", "company", "deal", "activity", "note", "task", "file", "relation"],
+        [person, company, deal, collection, activity, note, task, file, relation].map((record) =>
+          record.type
+        ),
+        [
+          "person",
+          "company",
+          "deal",
+          "collection",
+          "activity",
+          "note",
+          "task",
+          "file",
+          "relation",
+        ],
       )
       assertEquals(
         await crm.read("record.get", {
@@ -391,6 +411,76 @@ for (const scenario of kernelScenarios) {
       assertEquals(timeline.some((record) => record.id === activity.id), true)
       assertEquals(timeline.some((record) => record.id === note.id), true)
       assertEquals(timeline.some((record) => record.id === unrelated.id), false)
+    })
+  })
+
+  Deno.test(`${scenario.name}: collections group related records without owning profile logic`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await assertRejects(
+        () =>
+          crm.write("collection.create", {
+            workspaceId: "workspace_1",
+            title: "Missing members",
+            kind: "gmail.thread",
+            related: [{ type: "activity", id: "missing_activity" }],
+          }),
+        CrmNotFoundError,
+      )
+
+      const activity = await crm.write("activity.create", {
+        workspaceId: "workspace_1",
+        id: "activity_1",
+        kind: "email",
+        subject: "Renewal pricing",
+        occurredAt: "2026-01-02T00:00:00.000Z",
+      })
+      const note = await crm.write("note.create", {
+        workspaceId: "workspace_1",
+        id: "note_1",
+        body: "Customer asked for renewal terms.",
+        related: [{ type: "activity", id: activity.id }],
+      })
+      const unrelated = await crm.write("task.create", {
+        workspaceId: "workspace_1",
+        id: "task_1",
+        title: "Unrelated follow-up",
+        status: "todo",
+      })
+      const collection = await crm.write("collection.create", {
+        workspaceId: "workspace_1",
+        id: "collection_1",
+        title: "Acme renewal discussion",
+        kind: "sales.renewal",
+        status: "open",
+        related: [
+          { type: "activity", id: activity.id },
+          { type: "note", id: note.id },
+        ],
+        outcome: {
+          code: "pending",
+          summary: "Waiting on pricing approval.",
+          related: [{ type: "activity", id: activity.id }],
+        },
+      })
+
+      const timeline = await crm.read("timeline.list", {
+        workspaceId: "workspace_1",
+        type: "collection",
+        id: collection.id,
+      })
+
+      assertEquals(timeline.some((record) => record.id === collection.id), true)
+      assertEquals(timeline.some((record) => record.id === activity.id), true)
+      assertEquals(timeline.some((record) => record.id === note.id), true)
+      assertEquals(timeline.some((record) => record.id === unrelated.id), false)
+
+      const activityTimeline = await crm.read("timeline.list", {
+        workspaceId: "workspace_1",
+        type: "activity",
+        id: activity.id,
+      })
+
+      assertEquals(activityTimeline.some((record) => record.id === collection.id), true)
     })
   })
 

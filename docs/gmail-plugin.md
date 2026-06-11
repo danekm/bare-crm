@@ -14,10 +14,11 @@ The kernel does not gain Gmail-specific entities.
 
 Gmail remains the communication surface. Bare CRM stores normalized business memory:
 
+- `Collection` for Gmail threads or larger customer conversations worth grouping
 - `Activity` for meaningful email interactions
 - `Task` for follow-ups implied by messages
 - `Note` for durable internal context
-- `Relation` for links to people, companies, deals, tasks, files, or activities
+- `Relation` for links to people, companies, deals, collections, tasks, files, or activities
 - `File` only when attachments or derived artifacts are worth preserving
 
 Raw Gmail concepts such as message id, thread id, history id, sync cursor, body hash, labels,
@@ -151,14 +152,15 @@ Confirmed actions write through the Write API.
 
 Promoted or confirmed messages map to existing kernel writes:
 
-| Plugin action                 | Kernel operation  |
-| ----------------------------- | ----------------- |
-| save activity                 | `activity.create` |
-| create follow-up              | `task.create`     |
-| add context                   | `note.create`     |
-| attach to deal/person/company | `relation.create` |
-| update customer/deal state    | `record.update`   |
-| preserve attachment/artifact  | `file.create`     |
+| Plugin action                 | Kernel operation    |
+| ----------------------------- | ------------------- |
+| create/update thread context  | `collection.create` |
+| save activity                 | `activity.create`   |
+| create follow-up              | `task.create`       |
+| add context                   | `note.create`       |
+| attach to deal/person/company | `relation.create`   |
+| update customer/deal state    | `record.update`     |
+| preserve attachment/artifact  | `file.create`       |
 
 Use `source: "plugin"` and `externalRefs`:
 
@@ -170,6 +172,12 @@ Use `source: "plugin"` and `externalRefs`:
 ```
 
 Plugin-owned Gmail detail belongs in `custom.gmail`.
+
+The helper `createGmailThreadCollectionInput` maps a Gmail message snapshot into a `gmail.thread`
+collection draft. `createGmailActivityInput` maps the message into an email activity, and
+`createGmailFollowUpTaskInput` maps follow-up intent into a task. A real sync plugin should call
+these helpers through the Extension Host so approved capabilities and collection profiles are
+enforced before writes reach the kernel.
 
 ## Dedupe
 

@@ -58,6 +58,7 @@ Write API.
 The kernel owns:
 
 - CRM records and relations
+- collections that group CRM records into durable business contexts
 - entity IDs and versions
 - workspace scoping
 - writes and validation
@@ -102,13 +103,23 @@ Every plugin starts with a manifest:
   "description": "Creates CRM tasks and notes from selected Gmail messages.",
   "capabilities": [
     "crm:read:record.search",
+    "crm:write:collection.create",
     "crm:write:task.create",
     "crm:write:note.create",
     "plugin:sync",
+    "plugin:profiles",
     "network:external",
     "secrets:read"
   ],
   "contributes": {
+    "collectionProfiles": [
+      {
+        "id": "gmail.thread",
+        "name": "Gmail thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["responded", "converted", "no_action"]
+      }
+    ],
     "syncs": [
       {
         "id": "gmail-inbox",
@@ -135,11 +146,12 @@ CRM capabilities describe what the plugin can ask the kernel to do:
 - `crm:write:person.create`
 - `crm:write:company.create`
 - `crm:write:deal.create`
+- `crm:write:collection.create`
 - `crm:write:task.create`
 - `crm:write:note.create`
 - `crm:write:record.update`
-- `crm:write:relation.upsert`
-- `crm:write:record.delete`
+- `crm:write:relation.create`
+- `crm:write:record.archive`
 
 Runtime capabilities describe what the plugin runtime may need outside the kernel:
 
@@ -149,6 +161,7 @@ Runtime capabilities describe what the plugin runtime may need outside the kerne
 - `plugin:commands`
 - `plugin:ui`
 - `plugin:sync`
+- `plugin:profiles`
 - `network:external`
 - `secrets:read`
 - `files:read`
@@ -165,6 +178,8 @@ inside the kernel.
 Supported contribution families:
 
 - `fields`: additional typed fields a host app can render or persist through normal record writes
+- `collectionProfiles`: collection kind, status, outcome, and related-record profiles that an
+  Extension Host can validate above the kernel
 - `policies`: optional package-level rules enforced by a host/runtime before calling the Write API
 - `workflows`: optional automations run by a plugin runtime, not by the kernel
 - `commands`: explicit plugin actions a host/runtime can expose
