@@ -137,6 +137,7 @@ See `docs/` for the first architecture notes:
 - [Bare Gmail plugin](docs/gmail-plugin.md)
 - [Policies and workflows](docs/policies-workflows.md)
 - [Plugins](docs/plugins.md)
+- [Plugin development](docs/plugin-development.md)
 - [MCP adapter](docs/mcp.md)
 - [Noros integration](docs/noros.md)
 - [Open source plan](docs/open-source.md)

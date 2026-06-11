@@ -2,6 +2,8 @@
 
 Plugins are optional packages outside the core kernel.
 
+For a practical authoring walkthrough, see [Plugin Development](plugin-development.md).
+
 They can contribute:
 
 - fields

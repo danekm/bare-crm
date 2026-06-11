@@ -7,7 +7,7 @@
     "./postgres": "./src/postgres.ts"
   },
   "tasks": {
-    "check": "deno check src/index.ts src/sqlite.ts src/postgres.ts tests/kernel.test.ts tests/storage.test.ts tests/import_export.test.ts tests/plugins.test.ts tests/mcp.test.ts tests/gmail_plugin.test.ts tests/hard_rules.test.ts tests/fake_postgres.ts",
+    "check": "deno check src/index.ts src/sqlite.ts src/postgres.ts tests/kernel.test.ts tests/storage.test.ts tests/import_export.test.ts tests/plugins.test.ts tests/mcp.test.ts tests/gmail_plugin.test.ts tests/hard_rules.test.ts tests/plugin_development_docs.test.ts tests/fake_postgres.ts",
     "test": "deno test --allow-read --allow-write --allow-env --allow-ffi --allow-net=github.com,release-assets.githubusercontent.com",
     "fmt": "deno fmt"
   },

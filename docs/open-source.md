@@ -80,6 +80,7 @@ Current first-pass documentation:
 - `docs/postgres-supabase.md`
 - `docs/policies-workflows.md`
 - `docs/plugins.md`
+- `docs/plugin-development.md`
 - `docs/mcp.md`
 - `docs/noros.md`
 - `docs/import-export.md`
