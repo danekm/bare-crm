@@ -87,6 +87,7 @@ Current first-pass documentation:
 - `docs/permissions.md`
 - `docs/conformance.md`
 - `docs/channel-strategy.md`
+- `docs/app-user-lookup.md`
 
 The original planning split had separate policies and workflows docs. The current repo combines them
 in `docs/policies-workflows.md` because both are optional layers above the kernel and share the same

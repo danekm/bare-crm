@@ -54,6 +54,9 @@ The kernel owns durable CRM truth:
 
 Plugins, syncs, agents, UIs, and jobs access CRM facts through these kernel APIs.
 
+The host exposes `readAsPlugin` and `writeAsPlugin` as the runtime boundary. Both require the plugin
+to be installed, enabled, and approved for the exact CRM capability being used.
+
 ## Multi-Tenant State
 
 One Extension Host can serve many workspaces if all extension state is scoped by `workspaceId`.

@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./admin": "./src/admin.ts",
     "./cli": "./src/cli.ts",
+    "./dashboard": "./src/dashboard.ts",
     "./extensions": "./src/extensions.ts",
     "./sqlite": "./src/sqlite.ts",
     "./postgres": "./src/postgres.ts"
@@ -19,8 +20,9 @@
     ]
   },
   "tasks": {
-    "check": "deno check src/index.ts src/admin.ts src/cli.ts src/sqlite.ts src/postgres.ts src/extensions.ts tests/kernel.test.ts tests/storage.test.ts tests/import_export.test.ts tests/plugins.test.ts tests/mcp.test.ts tests/admin.test.ts tests/cli.test.ts tests/migrations.test.ts tests/gmail_plugin.test.ts tests/hard_rules.test.ts tests/plugin_development_docs.test.ts tests/privacy_safety.test.ts tests/extensions.test.ts tests/fake_postgres.ts",
+    "check": "deno check src/index.ts src/admin.ts src/cli.ts src/dashboard.ts src/sqlite.ts src/postgres.ts src/extensions.ts plugins/bare-gmail/mod.ts plugins/bare-gmail/runner.ts plugins/bare-supabase-users/mod.ts plugins/bare-supabase-users/runner.ts tests/kernel.test.ts tests/storage.test.ts tests/import_export.test.ts tests/plugins.test.ts tests/mcp.test.ts tests/admin.test.ts tests/cli.test.ts tests/dashboard.test.ts tests/migrations.test.ts tests/gmail_plugin.test.ts tests/bare_gmail_plugin.test.ts tests/supabase_users_plugin.test.ts tests/hard_rules.test.ts tests/plugin_development_docs.test.ts tests/privacy_safety.test.ts tests/extensions.test.ts tests/fake_postgres.ts",
     "crm": "deno run --allow-read --allow-write --allow-env --allow-ffi src/cli.ts",
+    "dashboard": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi src/dashboard.ts",
     "install:cli:local": "deno install -g --allow-read --allow-write --allow-env --allow-ffi -n crm src/cli.ts",
     "publish:dry-run": "deno publish --dry-run --allow-dirty",
     "test": "deno test --allow-read --allow-write --allow-env --allow-ffi --allow-net=github.com,release-assets.githubusercontent.com",

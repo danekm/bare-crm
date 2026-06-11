@@ -8,6 +8,9 @@ import type {
   EntityRef,
   EntityType,
   ExecutionContext,
+  ReadInputByName,
+  ReadName,
+  ReadResultByName,
   WriteInputByName,
   WriteName,
   WriteResultByName,
@@ -105,6 +108,14 @@ export type ExtensionHost = {
       idempotencyKey?: string
     },
   ): Promise<WriteResultByName[W]>
+  readAsPlugin<R extends ReadName>(
+    input: {
+      workspaceId: string
+      pluginId: string
+      name: R
+      input: ReadInputByName[R]
+    },
+  ): Promise<ReadResultByName[R]>
   listPendingEvents(input: {
     workspaceId: string
     pluginId: string
@@ -290,7 +301,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 
     async writeAsPlugin(input) {
       const state = getEnabled(input.workspaceId, input.pluginId)
-      assertApprovedCapability(state, requiredCapability(input.name))
+      assertApprovedCapability(state, requiredCapability("write", input.name))
 
       if (input.name === "collection.create") {
         const result = this.validateCollection({
@@ -314,6 +325,17 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
           idempotencyKey: input.idempotencyKey,
         },
       ) as WriteResultByName[typeof input.name]
+    },
+
+    async readAsPlugin(input) {
+      const state = getEnabled(input.workspaceId, input.pluginId)
+      assertApprovedCapability(state, requiredCapability("read", input.name))
+
+      return await options.crm.read(
+        input.name,
+        input.input,
+        { context: pluginContext(state) },
+      ) as ReadResultByName[typeof input.name]
     },
 
     async listPendingEvents(input) {
@@ -519,8 +541,10 @@ function pluginContext(state: ExtensionPluginState): ExecutionContext {
   }
 }
 
-function requiredCapability(name: WriteName): Capability {
-  return `crm:write:${name}` as Capability
+function requiredCapability(kind: "read", name: ReadName): Capability
+function requiredCapability(kind: "write", name: WriteName): Capability
+function requiredCapability(kind: "read" | "write", name: ReadName | WriteName): Capability {
+  return `crm:${kind}:${name}` as Capability
 }
 
 function clonePluginState(state: ExtensionPluginState): ExtensionPluginState {

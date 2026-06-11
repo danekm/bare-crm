@@ -1,0 +1,67 @@
+{
+  "id": "bare.gmail",
+  "name": "Bare Gmail Workspace",
+  "version": "0.1.0",
+  "description": "Workspace-scoped Gmail plugin that turns meaningful threads into Bare CRM collections, activities, and follow-up tasks.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:collection.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "plugin:profiles",
+    "plugin:sync",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "activity",
+        "key": "gmail",
+        "label": "Gmail provenance",
+        "type": "json"
+      },
+      {
+        "entity": "collection",
+        "key": "gmail",
+        "label": "Gmail thread state",
+        "type": "json"
+      },
+      {
+        "entity": "task",
+        "key": "gmail",
+        "label": "Gmail follow-up provenance",
+        "type": "json"
+      }
+    ],
+    "collectionProfiles": [
+      {
+        "id": "gmail.thread",
+        "name": "Gmail thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["no_action", "responded", "converted", "archived"],
+        "optionalRelated": ["person", "company", "deal", "activity", "note", "task", "file"]
+      }
+    ],
+    "commands": [
+      {
+        "id": "gmail.save_activity",
+        "name": "Save Gmail message as activity",
+        "requires": ["crm:write:activity.create"]
+      },
+      {
+        "id": "gmail.create_follow_up",
+        "name": "Create Gmail follow-up task",
+        "requires": ["crm:write:task.create"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "gmail.message-sync",
+        "name": "Gmail message sync",
+        "system": "gmail",
+        "direction": "import"
+      }
+    ]
+  }
+}

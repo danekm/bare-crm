@@ -10,6 +10,9 @@ It is one plugin package with two runtime surfaces:
 
 The kernel does not gain Gmail-specific entities.
 
+The executable first slice lives in `plugins/bare-gmail/`. It includes a portable `plugin.json` and
+a deterministic runner that processes `GmailMessageSnapshot` inputs through the Extension Host.
+
 ## Why This Is Not A Second Inbox
 
 Gmail remains the communication surface. Bare CRM stores normalized business memory:
@@ -37,12 +40,14 @@ flowchart TB
   Sync --> Classifier["Classifier"]
   Sync --> Review["Review queue"]
 
-  Context --> Read["Read API"]
-  Actions --> Write["Write API"]
+  Context --> Host["Extension Host"]
+  Actions --> Host
   Classifier --> Review
-  Classifier --> Write
-  Review --> Write
+  Classifier --> Host
+  Review --> Host
 
+  Host --> Read["Read API"]
+  Host --> Write["Write API"]
   Write --> EventLog["Event Log"]
   Write --> Storage["Storage API"]
   Read --> Storage

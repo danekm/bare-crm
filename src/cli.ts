@@ -44,6 +44,10 @@ export async function runCli(args: string[], io: CliIo = defaultIo): Promise<num
     return await runPlugins(rest, io)
   }
 
+  if (command === "dashboard") {
+    return await runDashboard(rest, io)
+  }
+
   io.err(`Unknown command: ${command}\n\n${helpText()}`)
   return 2
 }
@@ -156,6 +160,35 @@ async function runPlugins(args: string[], io: CliIo): Promise<number> {
     }
     throw error
   }
+}
+
+async function runDashboard(args: string[], io: CliIo): Promise<number> {
+  const dbPath = optionValue(args, "--db") ?? "./bare-crm.db"
+  const workspaceId = optionValue(args, "--workspace") ?? "workspace_1"
+  const hostname = optionValue(args, "--host") ?? "127.0.0.1"
+  const portValue = optionValue(args, "--port") ?? "8787"
+  const port = Number(portValue)
+
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    io.err("Invalid --port value. Expected a TCP port between 1 and 65535.")
+    return 2
+  }
+
+  const { startDashboardServer } = await import("./dashboard.ts")
+  const server = startDashboardServer({ dbPath, workspaceId, hostname, port })
+
+  io.out([
+    "Bare CRM dashboard running",
+    "",
+    `URL: http://${hostname}:${server.addr.port}`,
+    `Workspace: ${workspaceId}`,
+    `Database: ${dbPath}`,
+    "",
+    "Press Ctrl-C to stop.",
+  ].join("\n"))
+
+  await server.finished
+  return 0
 }
 
 function optionValue(args: string[], name: string): string | undefined {
@@ -303,6 +336,7 @@ function helpText(): string {
     "  db migrate sqlite <path>       Apply pending SQLite schema migrations",
     "  db migrate sqlite <path> --dry-run",
     "  plugins validate <path>        Validate a plugin manifest",
+    "  dashboard --db <path>          Run the optional local dashboard",
     "  version                        Print CLI version",
     "  help                           Show this help",
   ].join("\n")
