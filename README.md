@@ -10,6 +10,14 @@ CRM application.
 It is inspired by projects like [Pi](https://github.com/earendil-works/pi): keep the core runtime
 simple, make the extension points explicit, and let richer tools accrete around a stable center.
 
+## Status
+
+Bare CRM is early and experimental. The public API should be treated as reviewable, not stable,
+until the core contracts settle.
+
+This repository is intentionally not a production CRM app, hosted SaaS, admin UI, workflow platform,
+or agent runtime.
+
 ## Principles
 
 - **Kernel over product:** the core stores facts safely; optional layers define behavior.
@@ -21,6 +29,22 @@ simple, make the extension points explicit, and let richer tools accrete around 
 - **MCP-native, not MCP-dependent:** agents can use the CRM through MCP, while the kernel remains a
   normal library.
 - **No runner in core:** workflows, jobs, UI, and Noros/agents live outside the kernel.
+
+## How It Differs
+
+Bare CRM is closest in spirit to a small runtime kernel. It is not trying to replace a full CRM
+product by adding every feature. It is trying to make CRM facts portable, durable, and easy to
+extend.
+
+| Project type              | Useful when you want                          | Bare CRM difference                                                                          |
+| ------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Twenty, EspoCRM, SuiteCRM | a ready CRM app with UI and product workflows | Bare CRM has no required UI and no baked-in sales process                                    |
+| Corteza                   | a larger low-code business app platform       | Bare CRM keeps the core to CRM records, APIs, storage, and events                            |
+| Directus                  | a data/API platform over a database           | Bare CRM exposes CRM-specific Write API and Read API contracts, not arbitrary storage access |
+| Custom agent memory       | model-native memory for one agent flow        | Bare CRM stores durable business facts with audit history and storage adapters               |
+
+The bet is that a very small stable kernel can support many different products, plugins, agents, and
+interfaces without becoming a swollen CRM application itself.
 
 ## Core Entities
 
@@ -70,6 +94,18 @@ is:
 - `@bare-crm/workflows` for optional event listeners and job helpers
 - `@bare-crm/cli` for optional local operation and development
 
+## Open Source Posture
+
+Bare CRM is MIT licensed. Contributions should protect the small core:
+
+- add kernel behavior only when it is universal CRM infrastructure
+- put sales-process opinions in policies, workflows, plugins, or examples
+- keep storage adapters behind the Storage API
+- keep model, UI, MCP server, and Noros assumptions outside the kernel
+- add or extend tests when changing behavior
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [Open source plan](docs/open-source.md).
+
 ## Development
 
 This repository uses Deno so the reference kernel can stay dependency-light.
@@ -101,6 +137,7 @@ See `docs/` for the first architecture notes:
 - [Plugins](docs/plugins.md)
 - [MCP adapter](docs/mcp.md)
 - [Noros integration](docs/noros.md)
+- [Open source plan](docs/open-source.md)
 - [Permissions](docs/permissions.md)
 - [Conformance tests](docs/conformance.md)
 
