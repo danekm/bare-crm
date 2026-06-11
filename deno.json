@@ -1,10 +1,13 @@
 {
   "name": "@bare-crm/kernel",
   "version": "0.1.0",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sqlite": "./src/sqlite.ts"
+  },
   "tasks": {
-    "check": "deno check src/index.ts tests/kernel.test.ts tests/storage.test.ts",
-    "test": "deno test",
+    "check": "deno check src/index.ts src/sqlite.ts tests/kernel.test.ts tests/storage.test.ts",
+    "test": "deno test --allow-read --allow-write --allow-env --allow-ffi --allow-net=github.com,release-assets.githubusercontent.com",
     "fmt": "deno fmt"
   },
   "fmt": {

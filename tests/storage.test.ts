@@ -1,9 +1,19 @@
-import { assertEquals } from "jsr:@std/assert"
-import { createMemoryStorage, type StorageApi } from "../src/index.ts"
+import { assertEquals, assertRejects } from "jsr:@std/assert"
+import { createMemoryStorage, type StorageApi, StorageConflictError } from "../src/index.ts"
+import { createSqliteMemoryStorage } from "../src/sqlite.ts"
 import type { Person } from "../src/index.ts"
 
 Deno.test("memory Storage API satisfies base persistence behavior", async () => {
   await runStorageConformanceSuite(createMemoryStorage())
+})
+
+Deno.test("SQLite Storage API satisfies base persistence behavior", async () => {
+  const storage = createSqliteMemoryStorage()
+  try {
+    await runStorageConformanceSuite(storage)
+  } finally {
+    storage.close()
+  }
 })
 
 async function runStorageConformanceSuite(storage: StorageApi): Promise<void> {
@@ -28,6 +38,7 @@ async function runStorageConformanceSuite(storage: StorageApi): Promise<void> {
       occurredAt: "2026-01-01T00:00:00.000Z",
       writeId: "write_1",
     })
+    await tx.saveIdempotencyResult("workspace_1:person.create:key_1", person)
   })
 
   await storage.transaction(async (tx) => {
@@ -46,5 +57,13 @@ async function runStorageConformanceSuite(storage: StorageApi): Promise<void> {
       occurredAt: "2026-01-01T00:00:00.000Z",
       writeId: "write_1",
     }])
+    assertEquals(await tx.getIdempotencyResult("workspace_1:person.create:key_1"), person)
+  })
+
+  await storage.transaction(async (tx) => {
+    await assertRejects(
+      () => tx.put({ ...person, version: 2 }, { expectedVersion: 2 }),
+      StorageConflictError,
+    )
   })
 }
