@@ -12,7 +12,7 @@ runStorageConformanceSuite(createPostgresStorage(connection))
 
 ## Current Coverage
 
-The current suite runs against both in-memory storage and SQLite.
+The current suite runs against in-memory storage, SQLite, and the Postgres adapter.
 
 Kernel coverage includes:
 
@@ -43,4 +43,4 @@ Storage coverage includes:
 - type isolation
 - transaction rollback
 
-Postgres/Supabase should reuse and expand the same suites.
+New storage implementations should reuse and expand the same suites.

@@ -54,8 +54,8 @@ const people = await crm.read("record.search", {
 })
 ```
 
-The first implementation includes the core APIs plus in-memory and SQLite Storage API
-implementations. Postgres/Supabase is the next first-class storage target.
+The first implementation includes the core APIs plus in-memory, SQLite, and Postgres/Supabase
+Storage API implementations.
 
 ## Package Direction
 

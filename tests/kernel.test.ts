@@ -8,12 +8,14 @@ import {
   StorageConflictError,
 } from "../src/index.ts"
 import { createSqliteMemoryStorage } from "../src/sqlite.ts"
+import { createFakePostgresStorage } from "./fake_postgres.ts"
 
 type CloseableStorage = StorageApi & { close?: () => void }
 
 const kernelScenarios: Array<{ name: string; createStorage: () => CloseableStorage }> = [
   { name: "memory", createStorage: createMemoryStorage },
   { name: "SQLite", createStorage: createSqliteMemoryStorage },
+  { name: "Postgres", createStorage: createFakePostgresStorage },
 ]
 
 for (const scenario of kernelScenarios) {

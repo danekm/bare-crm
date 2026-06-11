@@ -10,8 +10,8 @@ The kernel should not know whether records live in memory, SQLite, or Postgres/S
 - SQLite: local-first, desktop, embedded, simple self-hosting
 - Postgres/Supabase: hosted/team production use
 
-The package currently ships the in-memory implementation and SQLite implementation.
-Postgres/Supabase should implement the same contract and run the same conformance suite.
+The package currently ships in-memory, SQLite, and Postgres/Supabase implementations. SQLite and
+Postgres live behind optional subpath exports so the core package import stays dependency-light.
 
 ## Contract
 
