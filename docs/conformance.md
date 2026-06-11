@@ -31,6 +31,9 @@ Kernel coverage includes:
 - execution context workspace matching
 - strict permission mode context and actor requirements
 - strict permission mode read/write capability enforcement
+- import create/match/update/dry-run by external reference
+- import/export helper behavior in strict capability mode
+- export through Read API with JSON Lines serialization
 - idempotency replay behavior
 - idempotency scoping by workspace and write name
 

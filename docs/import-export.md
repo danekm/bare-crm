@@ -2,22 +2,7 @@
 
 Imports use the Write API. Exports use the Read API.
 
-Neither should bypass the Storage API directly.
-
-## Imports
-
-Imports should:
-
-- accept incomplete records
-- preserve `source` and `externalRefs`
-- use idempotency keys
-- support dry-run validation
-- return per-row success/failure results
-
-## Exports
-
-The first durable export format should be JSON Lines. CSV can follow for common person, company, and
-deal exports.
+Neither path bypasses the Storage API directly.
 
 ## External References
 
@@ -32,3 +17,118 @@ type ExternalRef = {
   lastSeenAt?: string
 }
 ```
+
+The stable identity key is:
+
+```text
+system:id
+```
+
+The kernel does not perform fuzzy dedupe. Imports can match by exact external ref, return the
+existing record, or update it through the Write API.
+
+## Import By External Ref
+
+```ts
+const result = await importByExternalRef(
+  crm,
+  {
+    write: "person.create",
+    input: {
+      workspaceId: "workspace_1",
+      name: "Ada Lovelace",
+    },
+    externalRef: {
+      system: "hubspot",
+      id: "contact_1",
+    },
+  },
+  {
+    context,
+  },
+)
+```
+
+Behavior:
+
+- searches through `crm.read("record.search", { externalRef })`
+- creates through the requested Write API operation when no match exists
+- returns the existing record when one exact match exists
+- can update the existing record with `mode: "update"` and `updatePatch`
+- supports `dryRun: true`
+- adds the external ref to `externalRefs`
+- defaults imported record `source` to `"import"` when not supplied
+- uses a deterministic idempotency key unless the caller supplies one
+
+Structured result statuses:
+
+- `created`
+- `matched`
+- `updated`
+- `dry_run`
+
+If an external reference matches multiple records, the helper throws `ImportExportError` with
+`code: "external_ref.ambiguous"`.
+
+## Strict Mode
+
+Import helpers pass the provided context into both Read API and Write API calls. In strict
+capability mode, the context needs both sides of the operation:
+
+```ts
+{
+  workspaceId: "workspace_1",
+  actor: { type: "sync", id: "gmail_sync" },
+  capabilities: [
+    "crm:read:record.search",
+    "crm:write:person.create"
+  ]
+}
+```
+
+## Export Records
+
+```ts
+const records = await exportRecords(crm, {
+  workspaceId: "workspace_1",
+  type: "person",
+  includeRelations: true,
+})
+```
+
+Exports call the Read API and return canonical records. External refs and source metadata are part
+of the record shape, so they are preserved automatically.
+
+`includeRelations: true` adds relation records to the export without duplicating records already in
+the main result set.
+
+## JSON Lines
+
+JSON Lines is the first durable interchange format:
+
+```ts
+const jsonl = await exportJsonLines(crm, {
+  workspaceId: "workspace_1",
+  type: "person",
+  includeRelations: true,
+})
+```
+
+Each line is:
+
+```ts
+{
+  kind: "record",
+  schemaVersion: 1,
+  record: AnyRecord
+}
+```
+
+CSV can be added later for common person/company/deal exports.
+
+## Non-Goals
+
+- no HubSpot/Salesforce/Gmail-specific adapter in this layer
+- no fuzzy matching
+- no direct Storage API access
+- no policy enforcement unless the caller opts into strict mode or policy layers later
