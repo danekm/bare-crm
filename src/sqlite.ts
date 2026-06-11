@@ -1,5 +1,5 @@
 import { type BindValue, Database } from "jsr:@db/sqlite"
-import type { AnyRecord, CrmEvent, SearchInput } from "./types.ts"
+import type { AnyRecord, CrmEvent, EventListInput, SearchInput } from "./types.ts"
 import { type StorageApi, StorageConflictError, type StorageTx } from "./storage.ts"
 
 type Row = Record<string, unknown>
@@ -69,12 +69,28 @@ function installSchema(db: Database): void {
     create table if not exists events (
       workspace_id text not null,
       id text primary key,
+      name text not null,
+      write_id text not null,
+      record_type text not null,
+      record_id text not null,
+      source text not null,
+      actor_id text,
+      correlation_id text,
+      causation_id text,
+      idempotency_key text,
       occurred_at text not null,
       event_json text not null
     )
   `)
   db.exec(
     "create index if not exists events_workspace_occurred_idx on events(workspace_id, occurred_at)",
+  )
+  db.exec("create index if not exists events_workspace_name_idx on events(workspace_id, name)")
+  db.exec(
+    "create index if not exists events_workspace_record_idx on events(workspace_id, record_type, record_id)",
+  )
+  db.exec(
+    "create index if not exists events_workspace_correlation_idx on events(workspace_id, correlation_id)",
   )
 
   db.exec(`
@@ -164,19 +180,43 @@ function createTx(db: Database): StorageTx {
 
     async appendEvent(event) {
       db.prepare(`
-        insert into events (workspace_id, id, occurred_at, event_json)
-        values (?, ?, ?, ?)
-      `).run(event.workspaceId, event.id, event.occurredAt, JSON.stringify(event))
+        insert into events (
+          workspace_id,
+          id,
+          name,
+          write_id,
+          record_type,
+          record_id,
+          source,
+          actor_id,
+          correlation_id,
+          causation_id,
+          idempotency_key,
+          occurred_at,
+          event_json
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        event.workspaceId,
+        event.id,
+        event.name,
+        event.writeId,
+        event.recordRef.type,
+        event.recordRef.id,
+        event.source,
+        event.actorId ?? null,
+        event.correlationId ?? null,
+        event.causationId ?? null,
+        event.idempotencyKey ?? null,
+        event.occurredAt,
+        JSON.stringify(event),
+      )
     },
 
     async listEvents(input) {
-      const rows = db.prepare(`
-        select event_json
-        from events
-        where workspace_id = ?
-        order by occurred_at desc, rowid desc
-        limit ?
-      `).all(input.workspaceId, input.limit ?? 100) as Row[]
+      const rows = db.prepare(buildEventListSql(input)).all(
+        ...buildEventListParams(input),
+      ) as Row[]
 
       return rows
         .reverse()
@@ -223,6 +263,46 @@ function buildRecordSearchParams(input: SearchInput): BindValue[] {
   if (input.type) params.push(input.type)
   if (input.ownerId) params.push(input.ownerId)
   if (input.source) params.push(input.source)
+  return params
+}
+
+function buildEventListSql(input: EventListInput): string {
+  const clauses = ["workspace_id = ?"]
+  if (input.name) clauses.push("name = ?")
+  if (input.record) {
+    clauses.push("record_type = ?")
+    clauses.push("record_id = ?")
+  }
+  if (input.writeId) clauses.push("write_id = ?")
+  if (input.actorId) clauses.push("actor_id = ?")
+  if (input.source) clauses.push("source = ?")
+  if (input.correlationId) clauses.push("correlation_id = ?")
+  if (input.causationId) clauses.push("causation_id = ?")
+  if (input.idempotencyKey) clauses.push("idempotency_key = ?")
+
+  return `
+    select event_json
+    from events
+    where ${clauses.join(" and ")}
+    order by occurred_at desc, rowid desc
+    limit ?
+  `
+}
+
+function buildEventListParams(input: EventListInput): BindValue[] {
+  const params: BindValue[] = [input.workspaceId]
+  if (input.name) params.push(input.name)
+  if (input.record) {
+    params.push(input.record.type)
+    params.push(input.record.id)
+  }
+  if (input.writeId) params.push(input.writeId)
+  if (input.actorId) params.push(input.actorId)
+  if (input.source) params.push(input.source)
+  if (input.correlationId) params.push(input.correlationId)
+  if (input.causationId) params.push(input.causationId)
+  if (input.idempotencyKey) params.push(input.idempotencyKey)
+  params.push(input.limit ?? 100)
   return params
 }
 

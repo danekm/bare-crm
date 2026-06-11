@@ -1,4 +1,4 @@
-import type { AnyRecord, CrmEvent, SearchInput } from "./types.ts"
+import type { AnyRecord, CrmEvent, EventListInput, SearchInput } from "./types.ts"
 import { type StorageApi, StorageConflictError, type StorageTx } from "./storage.ts"
 
 type Row = Record<string, unknown>
@@ -63,11 +63,23 @@ const schemaStatements = [
     create table if not exists bare_crm_events (
       workspace_id text not null,
       id text primary key,
+      name text not null,
+      write_id text not null,
+      record_type text not null,
+      record_id text not null,
+      source text not null,
+      actor_id text,
+      correlation_id text,
+      causation_id text,
+      idempotency_key text,
       occurred_at timestamptz not null,
       event_json jsonb not null
     )
   `,
   "create index if not exists bare_crm_events_workspace_occurred_idx on bare_crm_events(workspace_id, occurred_at desc)",
+  "create index if not exists bare_crm_events_workspace_name_idx on bare_crm_events(workspace_id, name)",
+  "create index if not exists bare_crm_events_workspace_record_idx on bare_crm_events(workspace_id, record_type, record_id)",
+  "create index if not exists bare_crm_events_workspace_correlation_idx on bare_crm_events(workspace_id, correlation_id)",
   `
     create table if not exists bare_crm_idempotency (
       key text primary key,
@@ -225,24 +237,32 @@ function createTx(client: PostgresExecutor): StorageTx {
       await execute(
         client,
         `
-        insert into bare_crm_events (workspace_id, id, occurred_at, event_json)
-        values ($1, $2, $3, $4::jsonb)
+        insert into bare_crm_events (
+          workspace_id,
+          id,
+          name,
+          write_id,
+          record_type,
+          record_id,
+          source,
+          actor_id,
+          correlation_id,
+          causation_id,
+          idempotency_key,
+          occurred_at,
+          event_json
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
       `,
-        [event.workspaceId, event.id, event.occurredAt, JSON.stringify(event)],
+        eventParams(event),
       )
     },
 
     async listEvents(input) {
       const rows = await queryRows(
         client,
-        `
-        select event_json
-        from bare_crm_events
-        where workspace_id = $1
-        order by occurred_at desc, id desc
-        limit $2
-      `,
-        [input.workspaceId, input.limit ?? 100],
+        buildEventListSql(input),
+        buildEventListParams(input),
       )
 
       return rows
@@ -317,6 +337,66 @@ function recordParams(record: AnyRecord): unknown[] {
     record.source,
     JSON.stringify(record).toLowerCase(),
     JSON.stringify(record),
+  ]
+}
+
+function buildEventListSql(input: EventListInput): string {
+  const clauses = ["workspace_id = $1"]
+  let nextParam = 2
+
+  if (input.name) clauses.push(`name = $${nextParam++}`)
+  if (input.record) {
+    clauses.push(`record_type = $${nextParam++}`)
+    clauses.push(`record_id = $${nextParam++}`)
+  }
+  if (input.writeId) clauses.push(`write_id = $${nextParam++}`)
+  if (input.actorId) clauses.push(`actor_id = $${nextParam++}`)
+  if (input.source) clauses.push(`source = $${nextParam++}`)
+  if (input.correlationId) clauses.push(`correlation_id = $${nextParam++}`)
+  if (input.causationId) clauses.push(`causation_id = $${nextParam++}`)
+  if (input.idempotencyKey) clauses.push(`idempotency_key = $${nextParam++}`)
+
+  return `
+    select event_json
+    from bare_crm_events
+    where ${clauses.join(" and ")}
+    order by occurred_at desc, id desc
+    limit $${nextParam}
+  `
+}
+
+function buildEventListParams(input: EventListInput): unknown[] {
+  const params: unknown[] = [input.workspaceId]
+  if (input.name) params.push(input.name)
+  if (input.record) {
+    params.push(input.record.type)
+    params.push(input.record.id)
+  }
+  if (input.writeId) params.push(input.writeId)
+  if (input.actorId) params.push(input.actorId)
+  if (input.source) params.push(input.source)
+  if (input.correlationId) params.push(input.correlationId)
+  if (input.causationId) params.push(input.causationId)
+  if (input.idempotencyKey) params.push(input.idempotencyKey)
+  params.push(input.limit ?? 100)
+  return params
+}
+
+function eventParams(event: CrmEvent): unknown[] {
+  return [
+    event.workspaceId,
+    event.id,
+    event.name,
+    event.writeId,
+    event.recordRef.type,
+    event.recordRef.id,
+    event.source,
+    event.actorId ?? null,
+    event.correlationId ?? null,
+    event.causationId ?? null,
+    event.idempotencyKey ?? null,
+    event.occurredAt,
+    JSON.stringify(event),
   ]
 }
 

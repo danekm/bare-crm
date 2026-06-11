@@ -75,6 +75,7 @@ export function createMemoryStorage(): StorageApi {
         async listEvents(input) {
           return events
             .filter((event) => event.workspaceId === input.workspaceId)
+            .filter((event) => eventMatches(event, input))
             .slice(-(input.limit ?? 100))
         },
 
@@ -125,4 +126,20 @@ function externalRefMatches(
       candidate.system === externalRef.system && candidate.id === externalRef.id
     ),
   )
+}
+
+function eventMatches(event: CrmEvent, input: EventListInput): boolean {
+  if (input.name && event.name !== input.name) return false
+  if (input.record && !sameRef(event.recordRef, input.record)) return false
+  if (input.writeId && event.writeId !== input.writeId) return false
+  if (input.actorId && event.actorId !== input.actorId) return false
+  if (input.source && event.source !== input.source) return false
+  if (input.causationId && event.causationId !== input.causationId) return false
+  if (input.correlationId && event.correlationId !== input.correlationId) return false
+  if (input.idempotencyKey && event.idempotencyKey !== input.idempotencyKey) return false
+  return true
+}
+
+function sameRef(a: EntityRef, b: EntityRef): boolean {
+  return a.type === b.type && a.id === b.id
 }

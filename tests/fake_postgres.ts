@@ -126,18 +126,58 @@ class FakePostgresClient implements PostgresConnection {
     }
 
     if (normalized.startsWith("insert into bare_crm_events")) {
-      this.events.push(parseJson<CrmEvent>(queryArgs[3]))
+      this.events.push(parseJson<CrmEvent>(queryArgs[12]))
       return { rows: [] }
     }
 
     if (normalized.startsWith("select event_json from bare_crm_events")) {
-      const rows = this.events
+      let events = this.events
         .filter((event) => event.workspaceId === queryArgs[0])
+
+      let nextArg = 1
+      if (normalized.includes("name = $")) {
+        events = events.filter((event) => event.name === queryArgs[nextArg])
+        nextArg++
+      }
+      if (normalized.includes("record_type = $")) {
+        events = events.filter((event) => event.recordRef.type === queryArgs[nextArg])
+        nextArg++
+      }
+      if (normalized.includes("record_id = $")) {
+        events = events.filter((event) => event.recordRef.id === queryArgs[nextArg])
+        nextArg++
+      }
+      if (normalized.includes("write_id = $")) {
+        events = events.filter((event) => event.writeId === queryArgs[nextArg])
+        nextArg++
+      }
+      if (normalized.includes("actor_id = $")) {
+        events = events.filter((event) => event.actorId === queryArgs[nextArg])
+        nextArg++
+      }
+      if (normalized.includes("source = $")) {
+        events = events.filter((event) => event.source === queryArgs[nextArg])
+        nextArg++
+      }
+      if (normalized.includes("correlation_id = $")) {
+        events = events.filter((event) => event.correlationId === queryArgs[nextArg])
+        nextArg++
+      }
+      if (normalized.includes("causation_id = $")) {
+        events = events.filter((event) => event.causationId === queryArgs[nextArg])
+        nextArg++
+      }
+      if (normalized.includes("idempotency_key = $")) {
+        events = events.filter((event) => event.idempotencyKey === queryArgs[nextArg])
+        nextArg++
+      }
+
+      const eventRows = events
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.id.localeCompare(a.id))
-        .slice(0, Number(queryArgs[1]))
+        .slice(0, Number(queryArgs[nextArg]))
         .map((event) => ({ event_json: event }))
 
-      return rowsResult(rows)
+      return rowsResult(eventRows)
     }
 
     if (normalized.startsWith("select result_json from bare_crm_idempotency")) {

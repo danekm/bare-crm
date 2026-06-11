@@ -215,16 +215,33 @@ export type SearchInput = {
 export type EventListInput = {
   workspaceId: string
   limit?: number
+  name?: CrmEventName
+  record?: EntityRef
+  writeId?: string
+  actorId?: string
+  source?: SourceKind
+  causationId?: string
+  correlationId?: string
+  idempotencyKey?: string
 }
+
+export type CrmEventName = `${EntityType}.${"created" | "updated" | "archived"}`
 
 export type CrmEvent = {
   id: string
+  schemaVersion: 1
   workspaceId: string
-  name: `${EntityType}.${"created" | "updated" | "archived"}`
+  name: CrmEventName
+  operation: WriteName
+  recordRef: EntityRef
+  recordVersion: number
   record: AnyRecord
   occurredAt: string
   writeId: string
+  source: SourceKind
+  actorType?: ActorType
   actorId?: string
+  actorDisplayName?: string
   causationId?: string
   correlationId?: string
   idempotencyKey?: string

@@ -54,6 +54,7 @@ the Write API, Read API, or Storage API.
 - every kernel operation runs inside an explicit SQLite transaction
 - optimistic writes use the shared `expectedVersion` contract
 - events and idempotency results are persisted in the same transaction as records
+- event audit fields are indexed separately from the canonical event JSON
 - the adapter runs through the shared Storage API conformance test
 
 ## Non-Goals

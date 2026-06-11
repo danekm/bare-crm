@@ -64,6 +64,18 @@ Records and events are stored as canonical `jsonb`, while stable index columns s
 - `source`
 - `text_index`
 
+Event audit fields are also stored as relational columns for filtering:
+
+- `name`
+- `write_id`
+- `record_type`
+- `record_id`
+- `source`
+- `actor_id`
+- `correlation_id`
+- `causation_id`
+- `idempotency_key`
+
 The exported `getPostgresSchemaSql()` helper returns the schema statements for migrations or manual
 review.
 
@@ -73,6 +85,7 @@ review.
 - existing records are locked with `for update` before optimistic version checks
 - duplicate create IDs map to `StorageConflictError`
 - events and idempotency rows are written in the same transaction as records
+- event audit fields can be filtered without inspecting full event JSON
 - the adapter runs through the same kernel and Storage API behavior suites as memory and SQLite
 
 ## Supabase Notes

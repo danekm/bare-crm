@@ -230,6 +230,52 @@ for (const scenario of storageScenarios) {
       })
     })
   })
+
+  Deno.test(`${scenario.name}: Storage API event listing filters by audit fields`, async () => {
+    await withStorage(scenario, async (storage) => {
+      const target = eventRecord({
+        id: "event_1",
+        name: "person.updated",
+        operation: "record.update",
+        recordVersion: 2,
+        writeId: "write_1",
+        source: "sync",
+        actorType: "sync",
+        actorId: "gmail_sync",
+        causationId: "gmail_message_1",
+        correlationId: "gmail_thread_1",
+        idempotencyKey: "gmail:message:1",
+      })
+      const other = eventRecord({
+        id: "event_2",
+        writeId: "write_2",
+        actorId: "other_actor",
+        correlationId: "other_thread",
+      })
+
+      await storage.transaction(async (tx) => {
+        await tx.appendEvent(target)
+        await tx.appendEvent(other)
+      })
+
+      await storage.transaction(async (tx) => {
+        assertEquals(
+          await tx.listEvents({
+            workspaceId: "workspace_1",
+            name: "person.updated",
+            record: { type: "person", id: "person_1" },
+            writeId: "write_1",
+            actorId: "gmail_sync",
+            source: "sync",
+            causationId: "gmail_message_1",
+            correlationId: "gmail_thread_1",
+            idempotencyKey: "gmail:message:1",
+          }),
+          [target],
+        )
+      })
+    })
+  })
 }
 
 async function withStorage(
@@ -279,11 +325,16 @@ function eventRecord(overrides: Partial<CrmEvent> = {}): CrmEvent {
 
   return {
     id: "event_1",
+    schemaVersion: 1,
     workspaceId: record.workspaceId,
     name: "person.created",
+    operation: "person.create",
+    recordRef: { type: record.type, id: record.id },
+    recordVersion: record.version,
     record,
     occurredAt: "2026-01-01T00:00:00.000Z",
     writeId: "write_1",
+    source: record.source,
     ...overrides,
   }
 }

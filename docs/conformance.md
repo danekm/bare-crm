@@ -27,6 +27,7 @@ Kernel coverage includes:
 - workspace isolation
 - tags, owner, source, and external reference filters
 - Event Log workspace scoping and limits
+- Event Log audit-field filters
 - execution context workspace matching
 - idempotency replay behavior
 - idempotency scoping by workspace and write name
@@ -37,6 +38,7 @@ Storage coverage includes:
 - composable search filters
 - archive filtering
 - Event Log append/list
+- Event Log audit-field filters
 - idempotency lookups
 - optimistic concurrency
 - workspace isolation

@@ -120,7 +120,8 @@ for (const scenario of kernelScenarios) {
         {
           context: {
             workspaceId: "workspace_1",
-            actor: { type: "human", id: "user_1" },
+            actor: { type: "human", id: "user_1", displayName: "Ada" },
+            causationId: "event_import_started",
             correlationId: "corr_1",
           },
           idempotencyKey: "import:companies:1",
@@ -132,9 +133,17 @@ for (const scenario of kernelScenarios) {
       })
 
       assertEquals(events.length, 1)
+      assertEquals(events[0].schemaVersion, 1)
       assertEquals(events[0].name, "company.created")
+      assertEquals(events[0].operation, "company.create")
+      assertEquals(events[0].recordRef, { type: "company", id: company.id })
+      assertEquals(events[0].recordVersion, company.version)
       assertEquals(events[0].record, company)
+      assertEquals(events[0].source, "manual")
+      assertEquals(events[0].actorType, "human")
       assertEquals(events[0].actorId, "user_1")
+      assertEquals(events[0].actorDisplayName, "Ada")
+      assertEquals(events[0].causationId, "event_import_started")
       assertEquals(events[0].correlationId, "corr_1")
       assertEquals(events[0].idempotencyKey, "import:companies:1")
     })
@@ -485,6 +494,71 @@ for (const scenario of kernelScenarios) {
       assertEquals(events.length, 1)
       assertEquals(events[0].record.id, "person_2")
       assertEquals(events[0].workspaceId, "workspace_1")
+    })
+  })
+
+  Deno.test(`${scenario.name}: event listing filters by audit fields`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write(
+        "person.create",
+        {
+          workspaceId: "workspace_1",
+          id: "person_1",
+          name: "Ada Lovelace",
+          source: "import",
+        },
+        {
+          context: {
+            workspaceId: "workspace_1",
+            actor: { type: "sync", id: "gmail_sync" },
+            causationId: "gmail_message_1",
+            correlationId: "gmail_thread_1",
+          },
+          idempotencyKey: "gmail:message:1",
+        },
+      )
+      await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_2",
+        name: "Grace Hopper",
+      })
+
+      assertEquals(
+        await crm.read("event.list", {
+          workspaceId: "workspace_1",
+          name: "person.created",
+          record: { type: "person", id: person.id },
+          source: "import",
+          actorId: "gmail_sync",
+          causationId: "gmail_message_1",
+          correlationId: "gmail_thread_1",
+          idempotencyKey: "gmail:message:1",
+        }),
+        [{
+          id: "id_2",
+          schemaVersion: 1,
+          workspaceId: "workspace_1",
+          name: "person.created",
+          operation: "person.create",
+          recordRef: { type: "person", id: "person_1" },
+          recordVersion: 1,
+          record: person,
+          occurredAt: "2026-01-01T00:00:00.000Z",
+          writeId: "id_1",
+          source: "import",
+          actorType: "sync",
+          actorId: "gmail_sync",
+          causationId: "gmail_message_1",
+          correlationId: "gmail_thread_1",
+          idempotencyKey: "gmail:message:1",
+        }],
+      )
+
+      const [event] = await crm.read("event.list", {
+        workspaceId: "workspace_1",
+        writeId: "id_1",
+      })
+      assertEquals(event.recordRef, { type: "person", id: "person_1" })
     })
   })
 
