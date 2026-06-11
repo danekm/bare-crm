@@ -2,13 +2,16 @@ import { createMemoryStorage, type StorageApi, type StorageTx } from "./storage.
 import type {
   AnyRecord,
   BaseRecord,
+  Capability,
   CreateInput,
   CrmEvent,
   CrmKernel,
   EntityRef,
   EntityType,
+  ExecutionContext,
   ReadInputByName,
   ReadName,
+  ReadOptions,
   ReadResultByName,
   Relation,
   WriteInputByName,
@@ -36,23 +39,48 @@ export class CrmNotFoundError extends CrmKernelError {
   }
 }
 
+export class CrmPermissionError extends CrmKernelError {
+  constructor(
+    code: "context.required" | "actor.required" | "permission.denied",
+    message: string,
+    readonly requiredCapability?: Capability,
+  ) {
+    super(code, message, "capabilities", false)
+    this.name = "CrmPermissionError"
+  }
+}
+
+export type CrmKernelOptions = {
+  storage?: StorageApi
+  now?: () => Date
+  id?: () => string
+  enforceCapabilities?: boolean
+}
+
 export function createCrmKernel(
-  options: { storage?: StorageApi; now?: () => Date; id?: () => string } = {},
+  options: CrmKernelOptions = {},
 ): CrmKernel {
   const storage = options.storage ?? createMemoryStorage()
   const now = options.now ?? (() => new Date())
   const id = options.id ?? randomId
+  const enforceCapabilities = options.enforceCapabilities ?? false
 
   async function write<W extends WriteName>(
     name: W,
     input: WriteInputByName[W],
-    options?: WriteOptions,
+    writeOptions?: WriteOptions,
   ): Promise<WriteResultByName[W]> {
     const workspaceId = getWorkspaceId(input)
-    assertContextWorkspace(workspaceId, options)
+    assertAccess({
+      kind: "write",
+      name,
+      workspaceId,
+      context: writeOptions?.context,
+      enforceCapabilities,
+    })
 
-    const idempotencyKey = options?.idempotencyKey
-      ? `${workspaceId}:${name}:${options.idempotencyKey}`
+    const idempotencyKey = writeOptions?.idempotencyKey
+      ? `${workspaceId}:${name}:${writeOptions.idempotencyKey}`
       : undefined
 
     return await storage.transaction(async (tx) => {
@@ -64,7 +92,7 @@ export function createCrmKernel(
       const timestamp = now().toISOString()
       const writeId = id()
       const record = await applyWrite(tx, name, input, timestamp, id)
-      const event = createEvent(record, name, timestamp, writeId, id, options)
+      const event = createEvent(record, name, timestamp, writeId, id, writeOptions)
 
       await tx.put(record, getPutOptions(name, record))
       await tx.appendEvent(event)
@@ -80,7 +108,16 @@ export function createCrmKernel(
   async function read<R extends ReadName>(
     name: R,
     input: ReadInputByName[R],
+    readOptions?: ReadOptions,
   ): Promise<ReadResultByName[R]> {
+    assertAccess({
+      kind: "read",
+      name,
+      workspaceId: getReadWorkspaceId(input),
+      context: readOptions?.context,
+      enforceCapabilities,
+    })
+
     return await storage.transaction(async (tx) => {
       switch (name) {
         case "record.get":
@@ -293,15 +330,90 @@ function getWorkspaceId(input: WriteInputByName[WriteName]): string {
   return workspaceId
 }
 
-function assertContextWorkspace(workspaceId: string, options?: WriteOptions): void {
-  const contextWorkspaceId = options?.context?.workspaceId
-  if (contextWorkspaceId && contextWorkspaceId !== workspaceId) {
+function getReadWorkspaceId(input: ReadInputByName[ReadName]): string {
+  const workspaceId = "workspaceId" in input ? input.workspaceId : undefined
+  if (typeof workspaceId !== "string" || workspaceId.length === 0) {
     throw new CrmKernelError(
-      "workspace.mismatch",
-      "Write input workspaceId does not match execution context workspaceId",
+      "workspace.required",
+      "Read input must include workspaceId",
       "workspaceId",
     )
   }
+  return workspaceId
+}
+
+function assertAccess(
+  input:
+    | {
+      kind: "write"
+      name: WriteName
+      workspaceId: string
+      context?: ExecutionContext
+      enforceCapabilities: boolean
+    }
+    | {
+      kind: "read"
+      name: ReadName
+      workspaceId: string
+      context?: ExecutionContext
+      enforceCapabilities: boolean
+    },
+): void {
+  if (input.context?.workspaceId && input.context.workspaceId !== input.workspaceId) {
+    throw new CrmKernelError(
+      "workspace.mismatch",
+      `${capitalize(input.kind)} input workspaceId does not match execution context workspaceId`,
+      "workspaceId",
+    )
+  }
+
+  if (!input.enforceCapabilities) return
+
+  if (!input.context) {
+    throw new CrmPermissionError(
+      "context.required",
+      `${capitalize(input.kind)} operation requires an execution context`,
+    )
+  }
+
+  if (!input.context.actor?.id || !input.context.actor.type) {
+    throw new CrmPermissionError(
+      "actor.required",
+      `${capitalize(input.kind)} operation requires an actor in execution context`,
+    )
+  }
+
+  const required = input.kind === "write"
+    ? requiredCapability("write", input.name)
+    : requiredCapability("read", input.name)
+  if (!hasCapability(input.context.capabilities, input.kind, required)) {
+    throw new CrmPermissionError(
+      "permission.denied",
+      `${capitalize(input.kind)} operation requires capability: ${required}`,
+      required,
+    )
+  }
+}
+
+function requiredCapability(kind: "write", name: WriteName): Capability
+function requiredCapability(kind: "read", name: ReadName): Capability
+function requiredCapability(kind: "write" | "read", name: WriteName | ReadName): Capability {
+  return `crm:${kind}:${name}` as Capability
+}
+
+function hasCapability(
+  capabilities: Capability[] | undefined,
+  kind: "write" | "read",
+  required: Capability,
+): boolean {
+  if (!capabilities?.length) return false
+  return capabilities.includes("crm:*") ||
+    capabilities.includes(`crm:${kind}` as Capability) ||
+    capabilities.includes(required)
+}
+
+function capitalize(value: string): string {
+  return value[0].toUpperCase() + value.slice(1)
 }
 
 function isRelatedTo(record: AnyRecord, ref: EntityRef): boolean {

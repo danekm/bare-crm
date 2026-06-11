@@ -249,7 +249,12 @@ export type CrmEvent = {
 
 export type ActorType = "human" | "plugin" | "agent" | "sync" | "system"
 
-export type Capability = string
+export type Capability =
+  | "crm:*"
+  | "crm:read"
+  | "crm:write"
+  | `crm:read:${ReadName}`
+  | `crm:write:${WriteName}`
 
 export type ExecutionContext = {
   workspaceId: string
@@ -268,6 +273,10 @@ export type WriteOptions = {
   idempotencyKey?: string
 }
 
+export type ReadOptions = {
+  context?: ExecutionContext
+}
+
 export type WriteDraft = {
   name: WriteName
   input: WriteInputByName[WriteName]
@@ -278,6 +287,7 @@ export type KernelErrorShape = {
   message: string
   field?: string
   retryable?: boolean
+  requiredCapability?: Capability
   suggestedFix?: WriteDraft
 }
 
@@ -290,5 +300,6 @@ export type CrmKernel = {
   read<R extends ReadName>(
     name: R,
     input: ReadInputByName[R],
+    options?: ReadOptions,
   ): Promise<ReadResultByName[R]>
 }

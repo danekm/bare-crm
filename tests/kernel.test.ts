@@ -3,7 +3,9 @@ import {
   createCrmKernel,
   createMemoryStorage,
   CrmKernelError,
+  type CrmKernelOptions,
   CrmNotFoundError,
+  CrmPermissionError,
   type StorageApi,
   StorageConflictError,
 } from "../src/index.ts"
@@ -585,6 +587,178 @@ for (const scenario of kernelScenarios) {
     })
   })
 
+  Deno.test(`${scenario.name}: read workspace context must match read input`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+
+      await assertRejects(
+        () =>
+          crm.read(
+            "record.get",
+            { workspaceId: "workspace_1", type: "person", id: "person_1" },
+            { context: { workspaceId: "workspace_2" } },
+          ),
+        CrmKernelError,
+        "workspaceId does not match",
+      )
+    })
+  })
+
+  Deno.test(`${scenario.name}: strict capability mode requires context and actor`, async () => {
+    await withKernel(
+      scenario,
+      async (crm) => {
+        await assertRejects(
+          () =>
+            crm.write("person.create", {
+              workspaceId: "workspace_1",
+              name: "Ada Lovelace",
+            }),
+          CrmPermissionError,
+          "requires an execution context",
+        )
+
+        await assertRejects(
+          () =>
+            crm.write(
+              "person.create",
+              {
+                workspaceId: "workspace_1",
+                name: "Ada Lovelace",
+              },
+              {
+                context: {
+                  workspaceId: "workspace_1",
+                  capabilities: ["crm:write:person.create"],
+                },
+              },
+            ),
+          CrmPermissionError,
+          "requires an actor",
+        )
+
+        await assertRejects(
+          () => crm.read("record.search", { workspaceId: "workspace_1" }),
+          CrmPermissionError,
+          "requires an execution context",
+        )
+      },
+      { enforceCapabilities: true },
+    )
+  })
+
+  Deno.test(`${scenario.name}: strict capability mode enforces write and read capabilities`, async () => {
+    await withKernel(
+      scenario,
+      async (crm) => {
+        await assertRejects(
+          () =>
+            crm.write(
+              "person.create",
+              {
+                workspaceId: "workspace_1",
+                name: "Ada Lovelace",
+              },
+              {
+                context: {
+                  workspaceId: "workspace_1",
+                  actor: { type: "agent", id: "agent_1" },
+                  capabilities: ["crm:read"],
+                },
+              },
+            ),
+          CrmPermissionError,
+          "crm:write:person.create",
+        )
+
+        const person = await crm.write(
+          "person.create",
+          {
+            workspaceId: "workspace_1",
+            id: "person_1",
+            name: "Ada Lovelace",
+          },
+          {
+            context: {
+              workspaceId: "workspace_1",
+              actor: { type: "agent", id: "agent_1" },
+              capabilities: ["crm:write:person.create"],
+            },
+          },
+        )
+
+        await assertRejects(
+          () =>
+            crm.read(
+              "record.get",
+              { workspaceId: "workspace_1", type: "person", id: person.id },
+              {
+                context: {
+                  workspaceId: "workspace_1",
+                  actor: { type: "agent", id: "agent_1" },
+                  capabilities: ["crm:write"],
+                },
+              },
+            ),
+          CrmPermissionError,
+          "crm:read:record.get",
+        )
+
+        assertEquals(
+          await crm.read(
+            "record.get",
+            { workspaceId: "workspace_1", type: "person", id: person.id },
+            {
+              context: {
+                workspaceId: "workspace_1",
+                actor: { type: "agent", id: "agent_1" },
+                capabilities: ["crm:read:record.get"],
+              },
+            },
+          ),
+          person,
+        )
+      },
+      { enforceCapabilities: true },
+    )
+  })
+
+  Deno.test(`${scenario.name}: strict capability mode supports broad capabilities`, async () => {
+    await withKernel(
+      scenario,
+      async (crm) => {
+        const adminContext = {
+          workspaceId: "workspace_1",
+          actor: { type: "system" as const, id: "system_1" },
+          capabilities: ["crm:*" as const],
+        }
+
+        const person = await crm.write(
+          "person.create",
+          {
+            workspaceId: "workspace_1",
+            name: "Ada Lovelace",
+          },
+          { context: adminContext },
+        )
+
+        assertEquals(
+          await crm.read(
+            "record.get",
+            { workspaceId: "workspace_1", type: "person", id: person.id },
+            { context: adminContext },
+          ),
+          person,
+        )
+      },
+      { enforceCapabilities: true },
+    )
+  })
+
   Deno.test(`${scenario.name}: idempotency keys return the original write result`, async () => {
     await withKernel(scenario, async (crm) => {
       const first = await crm.write(
@@ -649,6 +823,7 @@ for (const scenario of kernelScenarios) {
 async function withKernel(
   scenario: { createStorage: () => CloseableStorage },
   fn: (crm: ReturnType<typeof createCrmKernel>) => Promise<void>,
+  options: Pick<CrmKernelOptions, "enforceCapabilities"> = {},
 ): Promise<void> {
   const storage = scenario.createStorage()
   try {
@@ -656,6 +831,7 @@ async function withKernel(
       storage,
       now: () => new Date("2026-01-01T00:00:00.000Z"),
       id: sequenceId(),
+      enforceCapabilities: options.enforceCapabilities,
     })
     await fn(crm)
   } finally {

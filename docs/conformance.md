@@ -29,6 +29,8 @@ Kernel coverage includes:
 - Event Log workspace scoping and limits
 - Event Log audit-field filters
 - execution context workspace matching
+- strict permission mode context and actor requirements
+- strict permission mode read/write capability enforcement
 - idempotency replay behavior
 - idempotency scoping by workspace and write name
 
