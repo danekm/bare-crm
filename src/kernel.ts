@@ -1,271 +1,299 @@
+import { createMemoryStorage, type StorageApi, type StorageTx } from "./storage.ts"
 import type {
   AnyRecord,
   BaseRecord,
-  CommandInputByName,
-  CommandName,
+  CreateInput,
   CrmEvent,
   CrmKernel,
   EntityRef,
   EntityType,
-  Policy,
-  QueryInputByName,
-  QueryName,
-  QueryResultByName,
+  ReadInputByName,
+  ReadName,
+  ReadResultByName,
   Relation,
-  Workflow,
+  WriteInputByName,
+  WriteName,
+  WriteOptions,
+  WriteResultByName,
 } from "./types.ts"
 
-type StoreKey = `${string}:${EntityType}:${string}`
-
-export class CrmPolicyError extends Error {
+export class CrmKernelError extends Error {
   constructor(
     readonly code: string,
     message: string,
     readonly field?: string,
-    readonly suggestedFix?: unknown,
+    readonly retryable = false,
   ) {
     super(message)
-    this.name = "CrmPolicyError"
+    this.name = "CrmKernelError"
   }
 }
 
-export class CrmNotFoundError extends Error {
+export class CrmNotFoundError extends CrmKernelError {
   constructor(ref: EntityRef) {
-    super(`Record not found: ${ref.type}:${ref.id}`)
+    super("record.not_found", `Record not found: ${ref.type}:${ref.id}`)
     this.name = "CrmNotFoundError"
   }
 }
 
-export function createCrmKernel(options: { now?: () => Date; id?: () => string } = {}): CrmKernel {
+export function createCrmKernel(
+  options: { storage?: StorageApi; now?: () => Date; id?: () => string } = {},
+): CrmKernel {
+  const storage = options.storage ?? createMemoryStorage()
   const now = options.now ?? (() => new Date())
   const id = options.id ?? randomId
-  const records = new Map<StoreKey, AnyRecord>()
-  const events: CrmEvent[] = []
-  const policies: Policy[] = []
-  const workflows: Workflow[] = []
 
-  async function command<C extends CommandName>(
-    command: C,
-    input: CommandInputByName[C],
-  ): Promise<AnyRecord> {
-    await evaluatePolicies(policies, command, input)
+  async function write<W extends WriteName>(
+    name: W,
+    input: WriteInputByName[W],
+    options?: WriteOptions,
+  ): Promise<WriteResultByName[W]> {
+    const workspaceId = getWorkspaceId(input)
+    assertContextWorkspace(workspaceId, options)
 
-    const eventTime = now().toISOString()
-    let record: AnyRecord
+    const idempotencyKey = options?.idempotencyKey
+      ? `${workspaceId}:${name}:${options.idempotencyKey}`
+      : undefined
 
-    switch (command) {
-      case "person.create":
-        record = createRecord("person", input, eventTime, id)
-        break
-      case "company.create":
-        record = createRecord("company", input, eventTime, id)
-        break
-      case "deal.create":
-        record = createRecord("deal", input, eventTime, id)
-        break
-      case "activity.create":
-        record = createRecord("activity", input, eventTime, id)
-        break
-      case "note.create":
-        record = createRecord("note", input, eventTime, id)
-        break
-      case "task.create":
-        record = createRecord("task", input, eventTime, id)
-        break
-      case "file.create":
-        record = createRecord("file", input, eventTime, id)
-        break
-      case "relation.create":
-        {
-          const relationInput = input as CommandInputByName["relation.create"]
-          assertRefExists(records, relationInput.workspaceId, relationInput.from)
-          assertRefExists(records, relationInput.workspaceId, relationInput.to)
-          record = createRecord("relation", relationInput, eventTime, id)
-        }
-        break
-      case "record.update": {
-        const updateInput = input as CommandInputByName["record.update"]
-        const current = getRequired(records, updateInput.ref)
-        record = {
-          ...current,
-          ...updateInput.patch,
-          id: current.id,
-          type: current.type,
-          workspaceId: current.workspaceId,
-          createdAt: current.createdAt,
-          updatedAt: eventTime,
-          version: current.version + 1,
-        } as AnyRecord
-        break
+    return await storage.transaction(async (tx) => {
+      if (idempotencyKey) {
+        const existing = await tx.getIdempotencyResult(idempotencyKey)
+        if (existing) return existing as WriteResultByName[W]
       }
-      case "record.archive": {
-        const archiveInput = input as CommandInputByName["record.archive"]
-        const current = getRequired(records, archiveInput.ref)
-        record = {
-          ...current,
-          archivedAt: eventTime,
-          updatedAt: eventTime,
-          version: current.version + 1,
-        }
-        break
+
+      const timestamp = now().toISOString()
+      const writeId = id()
+      const record = await applyWrite(tx, name, input, timestamp, id)
+      const event = createEvent(record, name, timestamp, writeId, id, options)
+
+      await tx.put(record, getPutOptions(name, record))
+      await tx.appendEvent(event)
+
+      if (idempotencyKey) {
+        await tx.saveIdempotencyResult(idempotencyKey, record)
       }
-      default:
-        throw new Error(`Unsupported command: ${command satisfies never}`)
+
+      return record as WriteResultByName[W]
+    })
+  }
+
+  async function read<R extends ReadName>(
+    name: R,
+    input: ReadInputByName[R],
+  ): Promise<ReadResultByName[R]> {
+    return await storage.transaction(async (tx) => {
+      switch (name) {
+        case "record.get":
+          return await tx.get(input as ReadInputByName["record.get"]) as ReadResultByName[R]
+        case "record.search":
+          return await tx.search(input as ReadInputByName["record.search"]) as ReadResultByName[R]
+        case "timeline.list":
+          return await readTimeline(
+            tx,
+            input as ReadInputByName["timeline.list"],
+          ) as ReadResultByName[R]
+        case "relation.list":
+          return await readRelations(
+            tx,
+            input as ReadInputByName["relation.list"],
+          ) as ReadResultByName[R]
+        case "event.list":
+          return await tx.listEvents(input as ReadInputByName["event.list"]) as ReadResultByName[R]
+        default:
+          throw new Error(`Unsupported read: ${name satisfies never}`)
+      }
+    })
+  }
+
+  return { write, read }
+}
+
+async function applyWrite<W extends WriteName>(
+  tx: StorageTx,
+  name: W,
+  input: WriteInputByName[W],
+  timestamp: string,
+  id: () => string,
+): Promise<AnyRecord> {
+  switch (name) {
+    case "person.create":
+      return createRecord("person", input as WriteInputByName["person.create"], timestamp, id)
+    case "company.create":
+      return createRecord("company", input as WriteInputByName["company.create"], timestamp, id)
+    case "deal.create":
+      return createRecord("deal", input as WriteInputByName["deal.create"], timestamp, id)
+    case "activity.create":
+      return createRecord("activity", input as WriteInputByName["activity.create"], timestamp, id)
+    case "note.create":
+      return createRecord("note", input as WriteInputByName["note.create"], timestamp, id)
+    case "task.create":
+      return createRecord("task", input as WriteInputByName["task.create"], timestamp, id)
+    case "file.create":
+      return createRecord("file", input as WriteInputByName["file.create"], timestamp, id)
+    case "relation.create": {
+      const relationInput = input as WriteInputByName["relation.create"]
+      await assertRefExists(tx, relationInput.workspaceId, relationInput.from)
+      await assertRefExists(tx, relationInput.workspaceId, relationInput.to)
+      return createRecord("relation", relationInput, timestamp, id)
     }
-
-    records.set(key(record), record)
-    const event = appendEvent(events, record, command, eventTime, id)
-    await runWorkflows(workflows, event, crm)
-    return record
-  }
-
-  async function query<Q extends QueryName>(
-    query: Q,
-    input: QueryInputByName[Q],
-  ): Promise<QueryResultByName[Q]> {
-    switch (query) {
-      case "record.get":
-        return (records.get(key(input as QueryInputByName["record.get"])) ??
-          null) as QueryResultByName[Q]
-      case "record.search": {
-        const searchInput = input as QueryInputByName["record.search"]
-        const limit = searchInput.limit ?? 50
-        const text = searchInput.text?.toLowerCase()
-        return Array.from(records.values())
-          .filter((record) => record.workspaceId === searchInput.workspaceId)
-          .filter((record) => searchInput.includeArchived || !record.archivedAt)
-          .filter((record) => !searchInput.type || record.type === searchInput.type)
-          .filter((record) => !text || JSON.stringify(record).toLowerCase().includes(text))
-          .slice(0, limit) as QueryResultByName[Q]
-      }
-      case "timeline.list": {
-        const timelineInput = input as QueryInputByName["timeline.list"]
-        return Array.from(records.values())
-          .filter((record) => record.workspaceId === timelineInput.workspaceId)
-          .filter((record) => !record.archivedAt)
-          .filter((record) => isRelatedTo(record, timelineInput)) as QueryResultByName[Q]
-      }
-      case "event.list": {
-        const eventInput = input as QueryInputByName["event.list"]
-        return events
-          .filter((event) => event.workspaceId === eventInput.workspaceId)
-          .slice(-(eventInput.limit ?? 100)) as QueryResultByName[Q]
-      }
-      default:
-        throw new Error(`Unsupported query: ${query satisfies never}`)
+    case "record.update": {
+      const updateInput = input as WriteInputByName["record.update"]
+      const current = await getRequired(tx, updateInput.workspaceId, updateInput.ref)
+      return {
+        ...current,
+        ...updateInput.patch,
+        id: current.id,
+        type: current.type,
+        workspaceId: current.workspaceId,
+        createdAt: current.createdAt,
+        updatedAt: timestamp,
+        version: current.version + 1,
+      } as AnyRecord
     }
+    case "record.archive": {
+      const archiveInput = input as WriteInputByName["record.archive"]
+      const current = await getRequired(tx, archiveInput.workspaceId, archiveInput.ref)
+      return {
+        ...current,
+        archivedAt: timestamp,
+        updatedAt: timestamp,
+        version: current.version + 1,
+      }
+    }
+    default:
+      throw new Error(`Unsupported write: ${name satisfies never}`)
   }
-
-  const crm: CrmKernel = {
-    command,
-    query,
-
-    policy(policy) {
-      policies.push(policy)
-      policies.sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100))
-    },
-
-    workflow(workflow) {
-      workflows.push(workflow)
-    },
-  }
-
-  return crm
 }
 
 function createRecord<T extends AnyRecord>(
   type: T["type"],
-  input: Record<string, unknown>,
+  input: CreateInput<T>,
   timestamp: string,
   id: () => string,
 ): T {
   const base: BaseRecord = {
-    id: typeof input.id === "string" ? input.id : id(),
+    id: input.id ?? id(),
     type,
-    workspaceId: String(input.workspaceId),
+    workspaceId: input.workspaceId,
     createdAt: timestamp,
     updatedAt: timestamp,
-    archivedAt: undefined,
-    createdBy: typeof input.createdBy === "string" ? input.createdBy : undefined,
-    ownerId: typeof input.ownerId === "string" ? input.ownerId : undefined,
-    source: typeof input.source === "string" ? input.source as BaseRecord["source"] : "manual",
-    tags: Array.isArray(input.tags) ? input.tags as string[] : undefined,
-    custom: isObject(input.custom) ? input.custom : undefined,
+    createdBy: input.createdBy,
+    ownerId: input.ownerId,
+    source: input.source ?? "manual",
+    externalRefs: input.externalRefs,
+    tags: input.tags,
+    custom: input.custom,
     version: 1,
   }
 
   return { ...input, ...base } as T
 }
 
-async function evaluatePolicies(
-  policies: Policy[],
-  command: CommandName,
-  input: unknown,
-): Promise<void> {
-  const matching = policies.filter((policy) => policy.appliesTo.includes(command))
-
-  for (const policy of matching) {
-    const result = await policy.evaluate({ command, input })
-    if (!result.ok && policy.mode === "blocking") {
-      throw new CrmPolicyError(result.code, result.message, result.field, result.suggestedFix)
-    }
-  }
-}
-
-async function runWorkflows(
-  workflows: Workflow[],
-  event: CrmEvent,
-  crm: CrmKernel,
-): Promise<void> {
-  const matching = workflows.filter((workflow) =>
-    workflow.trigger === "*" || workflow.trigger === event.name
-  )
-
-  for (const workflow of matching) {
-    await workflow.run({ event, crm })
-  }
-}
-
-function appendEvent(
-  events: CrmEvent[],
+function createEvent(
   record: AnyRecord,
-  command: CommandName,
+  writeName: WriteName,
   timestamp: string,
+  writeId: string,
   id: () => string,
+  options?: WriteOptions,
 ): CrmEvent {
-  const verb = command === "record.update"
+  const verb = writeName === "record.update"
     ? "updated"
-    : command === "record.archive"
+    : writeName === "record.archive"
     ? "archived"
     : "created"
-  const event: CrmEvent = {
+
+  return {
     id: id(),
     workspaceId: record.workspaceId,
     name: `${record.type}.${verb}`,
     record,
     occurredAt: timestamp,
+    writeId,
+    actorId: options?.context?.actor?.id,
+    causationId: options?.context?.causationId,
+    correlationId: options?.context?.correlationId,
+    idempotencyKey: options?.idempotencyKey,
   }
-  events.push(event)
-  return event
 }
 
-function assertRefExists(
-  records: Map<StoreKey, AnyRecord>,
+async function readTimeline(
+  tx: StorageTx,
+  input: ReadInputByName["timeline.list"],
+): Promise<AnyRecord[]> {
+  const records = await tx.search({
+    workspaceId: input.workspaceId,
+    includeArchived: input.includeArchived,
+    limit: input.limit ?? 100,
+  })
+
+  return records.filter((record) => isRelatedTo(record, input))
+}
+
+async function readRelations(
+  tx: StorageTx,
+  input: ReadInputByName["relation.list"],
+): Promise<Relation[]> {
+  const records = await tx.search({
+    workspaceId: input.workspaceId,
+    type: "relation",
+    includeArchived: input.includeArchived,
+    limit: input.limit ?? 100,
+  })
+
+  return records
+    .filter((record): record is Relation => record.type === "relation")
+    .filter((relation) => sameRef(relation.from, input) || sameRef(relation.to, input))
+}
+
+async function assertRefExists(
+  tx: StorageTx,
   workspaceId: string,
   ref: EntityRef,
-): void {
-  if (!records.has(`${workspaceId}:${ref.type}:${ref.id}`)) {
-    throw new CrmNotFoundError(ref)
-  }
+): Promise<void> {
+  const record = await tx.get({ workspaceId, ...ref })
+  if (!record) throw new CrmNotFoundError(ref)
 }
 
-function getRequired(records: Map<StoreKey, AnyRecord>, ref: EntityRef): AnyRecord {
-  const matches = Array.from(records.values()).filter((record) =>
-    record.id === ref.id && record.type === ref.type
-  )
-  const record = matches[0]
+async function getRequired(
+  tx: StorageTx,
+  workspaceId: string,
+  ref: EntityRef,
+): Promise<AnyRecord> {
+  const record = await tx.get({ workspaceId, ...ref })
   if (!record) throw new CrmNotFoundError(ref)
   return record
+}
+
+function getPutOptions(
+  name: WriteName,
+  record: AnyRecord,
+): { expectedVersion?: number } | undefined {
+  if (name !== "record.update" && name !== "record.archive") return undefined
+  return { expectedVersion: record.version - 1 }
+}
+
+function getWorkspaceId(input: WriteInputByName[WriteName]): string {
+  const workspaceId = "workspaceId" in input ? input.workspaceId : undefined
+  if (typeof workspaceId !== "string" || workspaceId.length === 0) {
+    throw new CrmKernelError(
+      "workspace.required",
+      "Write input must include workspaceId",
+      "workspaceId",
+    )
+  }
+  return workspaceId
+}
+
+function assertContextWorkspace(workspaceId: string, options?: WriteOptions): void {
+  const contextWorkspaceId = options?.context?.workspaceId
+  if (contextWorkspaceId && contextWorkspaceId !== workspaceId) {
+    throw new CrmKernelError(
+      "workspace.mismatch",
+      "Write input workspaceId does not match execution context workspaceId",
+      "workspaceId",
+    )
+  }
 }
 
 function isRelatedTo(record: AnyRecord, ref: EntityRef): boolean {
@@ -277,8 +305,7 @@ function isRelatedTo(record: AnyRecord, ref: EntityRef): boolean {
     : []
 
   if (record.type === "relation") {
-    const relation = record as Relation
-    return sameRef(relation.from, ref) || sameRef(relation.to, ref)
+    return sameRef(record.from, ref) || sameRef(record.to, ref)
   }
 
   return [...maybeRelated, ...maybeParticipants].some((candidate) => sameRef(candidate, ref))
@@ -288,14 +315,6 @@ function sameRef(a: EntityRef, b: EntityRef): boolean {
   return a.type === b.type && a.id === b.id
 }
 
-function key(record: { workspaceId: string; type: EntityType; id: string }): StoreKey {
-  return `${record.workspaceId}:${record.type}:${record.id}`
-}
-
 function randomId(): string {
   return crypto.randomUUID()
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

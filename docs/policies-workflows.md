@@ -1,20 +1,23 @@
 # Policies And Workflows
 
-Policies and workflows are the layer above the kernel.
+Policies and workflows are optional layers above the kernel.
+
+The core kernel has no policy registry and no workflow runner. It exposes the Write API, Read API,
+Event Log, and Storage API. Optional packages may use those primitives to add business behavior.
 
 ## Policies
 
-Policies answer: should this command be allowed to proceed?
+Policies answer: should this Write API operation be allowed to proceed?
 
-They run before a write and cannot mutate data.
+They run before a write and cannot mutate data directly.
 
 ```ts
-crm.policy({
+policy({
   id: "deal-company-required",
-  appliesTo: ["deal.create", "deal.update"],
+  appliesTo: ["deal.create", "record.update"],
   mode: "blocking",
   evaluate({ input }) {
-    if (!input.companyId) {
+    if (!("companyId" in input)) {
       return {
         ok: false,
         code: "deal.company_required",
@@ -28,34 +31,53 @@ crm.policy({
 })
 ```
 
+Policies are not kernel invariants. They are workspace/plugin behavior.
+
 ## Workflows
 
 Workflows answer: now that something happened, what should happen next?
 
-They run after committed events and can mutate data only by calling commands.
+They run after committed events and mutate data only through the Write API.
 
 ```ts
-crm.workflow({
+workflow({
   id: "meeting-follow-up",
   trigger: "activity.created",
   async run({ event, crm }) {
-    if (event.record.kind !== "meeting") return
+    if (event.record.type !== "activity" || event.record.kind !== "meeting") return
 
-    await crm.command("task.create", {
+    await crm.write("task.create", {
       workspaceId: event.record.workspaceId,
       title: "Send follow-up",
-      related: event.record.related,
+      status: "todo",
+      related: [{ type: "activity", id: event.record.id }],
     })
   },
 })
 ```
 
+A workflow does not require a model. Most workflows should be deterministic event handlers.
+
+## Background Jobs
+
+Background jobs are optional async tasks outside the core:
+
+- importing a CSV
+- syncing from another CRM
+- retrying webhook delivery
+- recomputing a search index
+- running enrichment
+- creating reminders
+
+Jobs use the Write API and Read API. They do not bypass the kernel.
+
 ## Runtime Rules
 
 - policies cannot write data
-- workflows write only through commands
-- policy and workflow runs are observable
-- workflow retries are idempotent
+- workflows and jobs write only through the Write API
+- workflows and jobs read only through the Read API
+- optional runs should be observable
+- retries should be idempotent
 - permissions still apply inside plugins and workflows
-- loop guards prevent infinite event chains
-- human approval can pause a workflow
+- loop guards should prevent infinite event chains
+- human approval can pause an optional workflow

@@ -14,6 +14,8 @@ export type ExternalRef = {
   system: string
   id: string
   url?: string
+  kind?: "source" | "dedupe" | "canonical"
+  lastSeenAt?: string
 }
 
 export type EntityRef<T extends EntityType = EntityType> = {
@@ -30,7 +32,7 @@ export type BaseRecord<T extends EntityType = EntityType> = {
   archivedAt?: string
   createdBy?: string
   ownerId?: string
-  source?: SourceKind
+  source: SourceKind
   externalRefs?: ExternalRef[]
   tags?: string[]
   custom?: Record<string, unknown>
@@ -141,7 +143,16 @@ export type AnyRecord =
 export type CreateInput<T extends AnyRecord> =
   & Omit<T, keyof BaseRecord | "type">
   & Partial<
-    Pick<BaseRecord<T["type"]>, "id" | "createdBy" | "ownerId" | "source" | "tags" | "custom">
+    Pick<
+      BaseRecord<T["type"]>,
+      | "id"
+      | "createdBy"
+      | "ownerId"
+      | "source"
+      | "externalRefs"
+      | "tags"
+      | "custom"
+    >
   >
   & {
     workspaceId: string
@@ -151,7 +162,7 @@ export type UpdateInput<T extends AnyRecord> = Partial<
   Omit<T, "id" | "type" | "workspaceId" | "createdAt" | "updatedAt" | "version">
 >
 
-export type CommandInputByName = {
+export type WriteInputByName = {
   "person.create": CreateInput<Person>
   "company.create": CreateInput<Company>
   "deal.create": CreateInput<Deal>
@@ -160,33 +171,50 @@ export type CommandInputByName = {
   "task.create": CreateInput<Task>
   "file.create": CreateInput<FileRecord>
   "relation.create": CreateInput<Relation>
-  "record.update": { ref: EntityRef; patch: UpdateInput<AnyRecord> }
-  "record.archive": { ref: EntityRef }
+  "record.update": { workspaceId: string; ref: EntityRef; patch: UpdateInput<AnyRecord> }
+  "record.archive": { workspaceId: string; ref: EntityRef }
 }
 
-export type CommandName = keyof CommandInputByName
+export type WriteName = keyof WriteInputByName
 
-export type QueryInputByName = {
+export type WriteResultByName = {
+  [K in WriteName]: AnyRecord
+}
+
+export type ReadInputByName = {
   "record.get": EntityRef & { workspaceId: string }
-  "record.search": {
-    workspaceId: string
-    type?: EntityType
-    text?: string
-    includeArchived?: boolean
-    limit?: number
-  }
-  "timeline.list": EntityRef & { workspaceId: string }
-  "event.list": { workspaceId: string; limit?: number }
+  "record.search": SearchInput
+  "timeline.list": EntityRef & { workspaceId: string; includeArchived?: boolean; limit?: number }
+  "relation.list": EntityRef & { workspaceId: string; includeArchived?: boolean; limit?: number }
+  "event.list": EventListInput
 }
 
-export type QueryResultByName = {
+export type ReadResultByName = {
   "record.get": AnyRecord | null
   "record.search": AnyRecord[]
   "timeline.list": AnyRecord[]
+  "relation.list": Relation[]
   "event.list": CrmEvent[]
 }
 
-export type QueryName = keyof QueryInputByName
+export type ReadName = keyof ReadInputByName
+
+export type SearchInput = {
+  workspaceId: string
+  type?: EntityType
+  text?: string
+  includeArchived?: boolean
+  limit?: number
+  tags?: string[]
+  ownerId?: string
+  source?: SourceKind
+  externalRef?: Pick<ExternalRef, "system" | "id">
+}
+
+export type EventListInput = {
+  workspaceId: string
+  limit?: number
+}
 
 export type CrmEvent = {
   id: string
@@ -194,47 +222,55 @@ export type CrmEvent = {
   name: `${EntityType}.${"created" | "updated" | "archived"}`
   record: AnyRecord
   occurredAt: string
+  writeId: string
+  actorId?: string
   causationId?: string
+  correlationId?: string
+  idempotencyKey?: string
 }
 
-export type PolicyContext = {
-  command: CommandName
-  input: unknown
+export type ActorType = "human" | "plugin" | "agent" | "sync" | "system"
+
+export type Capability = string
+
+export type ExecutionContext = {
+  workspaceId: string
+  actor?: {
+    type: ActorType
+    id: string
+    displayName?: string
+  }
+  capabilities?: Capability[]
+  causationId?: string
+  correlationId?: string
 }
 
-export type PolicyResult =
-  | { ok: true; warnings?: PolicyWarning[] }
-  | { ok: false; code: string; message: string; field?: string; suggestedFix?: unknown }
+export type WriteOptions = {
+  context?: ExecutionContext
+  idempotencyKey?: string
+}
 
-export type PolicyWarning = {
+export type WriteDraft = {
+  name: WriteName
+  input: WriteInputByName[WriteName]
+}
+
+export type KernelErrorShape = {
   code: string
   message: string
   field?: string
-}
-
-export type Policy = {
-  id: string
-  appliesTo: CommandName[]
-  mode: "blocking" | "warning"
-  priority?: number
-  evaluate: (context: PolicyContext) => PolicyResult | Promise<PolicyResult>
-}
-
-export type Workflow = {
-  id: string
-  trigger: CrmEvent["name"] | "*"
-  run: (context: { event: CrmEvent; crm: CrmKernel }) => void | Promise<void>
+  retryable?: boolean
+  suggestedFix?: WriteDraft
 }
 
 export type CrmKernel = {
-  command<C extends CommandName>(
-    command: C,
-    input: CommandInputByName[C],
-  ): Promise<AnyRecord>
-  query<Q extends QueryName>(
-    query: Q,
-    input: QueryInputByName[Q],
-  ): Promise<QueryResultByName[Q]>
-  policy(policy: Policy): void
-  workflow(workflow: Workflow): void
+  write<W extends WriteName>(
+    name: W,
+    input: WriteInputByName[W],
+    options?: WriteOptions,
+  ): Promise<WriteResultByName[W]>
+  read<R extends ReadName>(
+    name: R,
+    input: ReadInputByName[R],
+  ): Promise<ReadResultByName[R]>
 }
