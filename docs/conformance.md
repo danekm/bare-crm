@@ -3,8 +3,11 @@
 Bare CRM should stay small because its behavior is tested as contracts, not protected by a large
 application shell.
 
-Every first-class Storage API implementation and optional adapter should pass the same behavioral
-expectations wherever possible.
+Every first-class Storage API implementation and generic kernel adapter should pass the same
+behavioral expectations wherever possible.
+
+Actual plugins are not part of the kernel conformance suite. A plugin can have its own tests in this
+repo, but those tests prove that plugin package, not the kernel contract.
 
 ## Test Architecture
 
@@ -15,15 +18,17 @@ flowchart TB
   Spec --> WriteSuite["Write API suite"]
   Spec --> ReadSuite["Read API suite"]
   Spec --> EventSuite["Event Log suite"]
-  Spec --> OptionalSuite["optional adapter suites"]
+  Spec --> OptionalSuite["generic adapter contract suites"]
+  ProjectTests["project/package tests"] --> ActualPlugins["actual plugin packages"]
 
   StorageSuite --> Memory["in-memory"]
   StorageSuite --> SQLite["SQLite"]
   StorageSuite --> Postgres["Postgres / Supabase-compatible fake"]
   OptionalSuite --> MCP["MCP adapter"]
-  OptionalSuite --> Plugins["plugin manifest"]
+  OptionalSuite --> PluginSDK["plugin manifest contract"]
   OptionalSuite --> ImportExport["import/export helpers"]
   OptionalSuite --> Workflows["workflow package\nfuture"]
+  ActualPlugins --> Gmail["Bare Gmail plugin"]
 ```
 
 ## Current Suites
@@ -38,11 +43,16 @@ deno task test
 
 `deno task test` currently runs:
 
+Kernel/conformance contract tests:
+
 - `tests/kernel.test.ts`
 - `tests/storage.test.ts`
 - `tests/import_export.test.ts`
 - `tests/plugins.test.ts`
 - `tests/mcp.test.ts`
+
+Project/package tests that are not part of kernel conformance:
+
 - `tests/gmail_plugin.test.ts`
 
 The same kernel and storage scenarios run against:
@@ -56,25 +66,24 @@ service. A live Postgres/Supabase integration suite can be added later behind ex
 
 ## v0.1 Acceptance Matrix
 
-| Area                   | Required coverage                                              | Current status         |
-| ---------------------- | -------------------------------------------------------------- | ---------------------- |
-| Entity creation        | every core record type can be created                          | covered                |
-| Write API              | create, update, archive, relation create                       | covered                |
-| Read API               | get, search, timeline, relation list, event list               | covered                |
-| Event Log              | successful writes append audit events                          | covered                |
-| Storage API            | get/put/search/events/idempotency/transactions                 | covered                |
-| Workspace isolation    | records, relations, reads, events, idempotency                 | covered                |
-| Archive behavior       | default reads hide archived records and relations              | covered                |
-| Relations              | endpoints must exist and relation reads work from both sides   | covered                |
-| Optimistic concurrency | stale versions conflict at storage boundary                    | covered                |
-| Idempotency            | write replay and workspace/write-name scoping                  | covered                |
-| Permissions            | strict context, actor, read/write capabilities                 | covered                |
-| Import/export          | external-ref match/create/update/dry-run/export                | covered                |
-| Plugin manifests       | valid examples, forbidden storage access, unknown capabilities | covered                |
-| MCP adapter            | tool/resource mapping, structured errors, policy hook          | covered                |
-| Gmail plugin           | classifier, dedupe refs, kernel draft mapping                  | covered                |
-| Policy package         | allow/warn/block evaluation                                    | planned outside kernel |
-| Workflow package       | dispatch, idempotency, loop prevention                         | planned outside kernel |
+| Area                     | Required coverage                                              | Current status         |
+| ------------------------ | -------------------------------------------------------------- | ---------------------- |
+| Entity creation          | every core record type can be created                          | covered                |
+| Write API                | create, update, archive, relation create                       | covered                |
+| Read API                 | get, search, timeline, relation list, event list               | covered                |
+| Event Log                | successful writes append audit events                          | covered                |
+| Storage API              | get/put/search/events/idempotency/transactions                 | covered                |
+| Workspace isolation      | records, relations, reads, events, idempotency                 | covered                |
+| Archive behavior         | default reads hide archived records and relations              | covered                |
+| Relations                | endpoints must exist and relation reads work from both sides   | covered                |
+| Optimistic concurrency   | stale versions conflict at storage boundary                    | covered                |
+| Idempotency              | write replay and workspace/write-name scoping                  | covered                |
+| Permissions              | strict context, actor, read/write capabilities                 | covered                |
+| Import/export            | external-ref match/create/update/dry-run/export                | covered                |
+| Plugin manifest contract | valid examples, forbidden storage access, unknown capabilities | covered                |
+| MCP adapter              | tool/resource mapping, structured errors, policy hook          | covered                |
+| Policy package           | allow/warn/block evaluation                                    | planned outside kernel |
+| Workflow package         | dispatch, idempotency, loop prevention                         | planned outside kernel |
 
 ## Failure Modes
 
@@ -95,7 +104,9 @@ Current failure coverage includes:
 - unknown plugin capabilities
 - MCP permission errors with required capability and repair hint
 - MCP resource workspace mismatch
-- Gmail ignored-message rules and promoted/suggested business signals
+
+Project/plugin tests also cover plugin-specific behavior such as Gmail ignored-message rules and
+promoted/suggested business signals. Those tests are intentionally outside kernel conformance.
 
 Future failure coverage should include:
 
