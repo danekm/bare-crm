@@ -1,178 +1,591 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert"
-import { createCrmKernel, CrmKernelError, CrmNotFoundError } from "../src/index.ts"
+import {
+  createCrmKernel,
+  createMemoryStorage,
+  CrmKernelError,
+  CrmNotFoundError,
+  type StorageApi,
+  StorageConflictError,
+} from "../src/index.ts"
+import { createSqliteMemoryStorage } from "../src/sqlite.ts"
 
-Deno.test("Write API creates records and Read API searches them", async () => {
-  const crm = createCrmKernel({
-    now: () => new Date("2026-01-01T00:00:00.000Z"),
-    id: sequenceId(),
-  })
+type CloseableStorage = StorageApi & { close?: () => void }
 
-  const person = await crm.write("person.create", {
-    workspaceId: "workspace_1",
-    name: "Ada Lovelace",
-    emails: [{ value: "ada@example.com", primary: true }],
-  })
+const kernelScenarios: Array<{ name: string; createStorage: () => CloseableStorage }> = [
+  { name: "memory", createStorage: createMemoryStorage },
+  { name: "SQLite", createStorage: createSqliteMemoryStorage },
+]
 
-  assertEquals(person.id, "id_2")
-  assertEquals(person.version, 1)
-  assertEquals(person.source, "manual")
-
-  const results = await crm.read("record.search", {
-    workspaceId: "workspace_1",
-    type: "person",
-    text: "lovelace",
-  })
-
-  assertEquals(results, [person])
-})
-
-Deno.test("Event Log records successful Write API operations", async () => {
-  const crm = createCrmKernel({
-    now: () => new Date("2026-01-01T00:00:00.000Z"),
-    id: sequenceId(),
-  })
-
-  const company = await crm.write(
-    "company.create",
-    {
-      workspaceId: "workspace_1",
-      name: "Analytical Engines Ltd",
-    },
-    {
-      context: {
+for (const scenario of kernelScenarios) {
+  Deno.test(`${scenario.name}: Write API creates records and Read API searches them`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write("person.create", {
         workspaceId: "workspace_1",
-        actor: { type: "human", id: "user_1" },
-        correlationId: "corr_1",
-      },
-      idempotencyKey: "import:companies:1",
-    },
-  )
+        name: "Ada Lovelace",
+        emails: [{ value: "ada@example.com", primary: true }],
+      })
 
-  const events = await crm.read("event.list", {
-    workspaceId: "workspace_1",
+      assertEquals(person.id, "id_2")
+      assertEquals(person.version, 1)
+      assertEquals(person.source, "manual")
+
+      const results = await crm.read("record.search", {
+        workspaceId: "workspace_1",
+        type: "person",
+        text: "lovelace",
+      })
+
+      assertEquals(results, [person])
+    })
   })
 
-  assertEquals(events.length, 1)
-  assertEquals(events[0].name, "company.created")
-  assertEquals(events[0].record, company)
-  assertEquals(events[0].actorId, "user_1")
-  assertEquals(events[0].correlationId, "corr_1")
-  assertEquals(events[0].idempotencyKey, "import:companies:1")
-})
+  Deno.test(`${scenario.name}: all core entity create writes produce records`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+      const company = await crm.write("company.create", {
+        workspaceId: "workspace_1",
+        id: "company_1",
+        name: "Analytical Engines Ltd",
+      })
+      const deal = await crm.write("deal.create", {
+        workspaceId: "workspace_1",
+        id: "deal_1",
+        name: "Difference Engine rollout",
+        stage: "qualified",
+        status: "open",
+      })
+      const activity = await crm.write("activity.create", {
+        workspaceId: "workspace_1",
+        id: "activity_1",
+        kind: "meeting",
+        occurredAt: "2026-01-02T00:00:00.000Z",
+      })
+      const note = await crm.write("note.create", {
+        workspaceId: "workspace_1",
+        id: "note_1",
+        body: "Very promising.",
+        related: [{ type: "deal", id: deal.id }],
+      })
+      const task = await crm.write("task.create", {
+        workspaceId: "workspace_1",
+        id: "task_1",
+        title: "Send proposal",
+        status: "todo",
+      })
+      const file = await crm.write("file.create", {
+        workspaceId: "workspace_1",
+        id: "file_1",
+        filename: "proposal.pdf",
+        mimeType: "application/pdf",
+        size: 12,
+        storageKey: "files/proposal.pdf",
+      })
+      const relation = await crm.write("relation.create", {
+        workspaceId: "workspace_1",
+        id: "relation_1",
+        from: { type: "person", id: person.id },
+        to: { type: "company", id: company.id },
+        kind: "works_at",
+      })
 
-Deno.test("relations require existing endpoints and can be listed", async () => {
-  const crm = createCrmKernel({ id: sequenceId() })
-
-  await assertRejects(() =>
-    crm.write("relation.create", {
-      workspaceId: "workspace_1",
-      from: { type: "person", id: "missing_person" },
-      to: { type: "company", id: "missing_company" },
-      kind: "works_at",
-    }), CrmNotFoundError)
-
-  const person = await crm.write("person.create", {
-    workspaceId: "workspace_1",
-    name: "Ada Lovelace",
+      assertEquals(
+        [person, company, deal, activity, note, task, file, relation].map((record) => record.type),
+        ["person", "company", "deal", "activity", "note", "task", "file", "relation"],
+      )
+      assertEquals(
+        await crm.read("record.get", {
+          workspaceId: "workspace_1",
+          type: "file",
+          id: "file_1",
+        }),
+        file,
+      )
+    })
   })
-  const company = await crm.write("company.create", {
-    workspaceId: "workspace_1",
-    name: "Analytical Engines Ltd",
+
+  Deno.test(`${scenario.name}: Event Log records successful Write API operations`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const company = await crm.write(
+        "company.create",
+        {
+          workspaceId: "workspace_1",
+          name: "Analytical Engines Ltd",
+        },
+        {
+          context: {
+            workspaceId: "workspace_1",
+            actor: { type: "human", id: "user_1" },
+            correlationId: "corr_1",
+          },
+          idempotencyKey: "import:companies:1",
+        },
+      )
+
+      const events = await crm.read("event.list", {
+        workspaceId: "workspace_1",
+      })
+
+      assertEquals(events.length, 1)
+      assertEquals(events[0].name, "company.created")
+      assertEquals(events[0].record, company)
+      assertEquals(events[0].actorId, "user_1")
+      assertEquals(events[0].correlationId, "corr_1")
+      assertEquals(events[0].idempotencyKey, "import:companies:1")
+    })
   })
 
-  const relation = await crm.write("relation.create", {
-    workspaceId: "workspace_1",
-    from: { type: "person", id: person.id },
-    to: { type: "company", id: company.id },
-    kind: "works_at",
+  Deno.test(`${scenario.name}: update preserves identity and increments version`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+        tags: ["lead"],
+      })
+
+      const updated = await crm.write("record.update", {
+        workspaceId: "workspace_1",
+        ref: { type: "person", id: person.id },
+        patch: {
+          name: "Ada Byron",
+          tags: ["lead", "vip"],
+        },
+      })
+
+      assertEquals(updated.id, person.id)
+      assertEquals(updated.type, "person")
+      assertEquals(updated.workspaceId, "workspace_1")
+      assertEquals(updated.createdAt, person.createdAt)
+      assertEquals(updated.version, 2)
+      if (updated.type !== "person") throw new Error("Expected person update result")
+      assertEquals(updated.name, "Ada Byron")
+      assertEquals(updated.tags, ["lead", "vip"])
+
+      const events = await crm.read("event.list", { workspaceId: "workspace_1" })
+      assertEquals(events.map((event) => event.name), ["person.created", "person.updated"])
+    })
   })
 
-  const relations = await crm.read("relation.list", {
-    workspaceId: "workspace_1",
-    type: "person",
-    id: person.id,
+  Deno.test(`${scenario.name}: duplicate create IDs are rejected`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await crm.write("company.create", {
+        workspaceId: "workspace_1",
+        id: "company_1",
+        name: "First Company",
+      })
+
+      await assertRejects(
+        () =>
+          crm.write("company.create", {
+            workspaceId: "workspace_1",
+            id: "company_1",
+            name: "Second Company",
+          }),
+        StorageConflictError,
+      )
+
+      const results = await crm.read("record.search", {
+        workspaceId: "workspace_1",
+        type: "company",
+        includeArchived: true,
+      })
+      assertEquals(
+        results.map((record) => {
+          if (record.type !== "company") throw new Error("Expected company search result")
+          return record.name
+        }),
+        ["First Company"],
+      )
+    })
   })
 
-  assertEquals(relations, [relation])
-})
+  Deno.test(`${scenario.name}: relations require existing endpoints and can be listed`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await assertRejects(() =>
+        crm.write("relation.create", {
+          workspaceId: "workspace_1",
+          from: { type: "person", id: "missing_person" },
+          to: { type: "company", id: "missing_company" },
+          kind: "works_at",
+        }), CrmNotFoundError)
 
-Deno.test("archive hides records from default reads", async () => {
-  const crm = createCrmKernel({ id: sequenceId() })
+      const person = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        name: "Ada Lovelace",
+      })
+      const company = await crm.write("company.create", {
+        workspaceId: "workspace_1",
+        name: "Analytical Engines Ltd",
+      })
 
-  const task = await crm.write("task.create", {
-    workspaceId: "workspace_1",
-    title: "Follow up",
-    status: "todo",
+      const relation = await crm.write("relation.create", {
+        workspaceId: "workspace_1",
+        from: { type: "person", id: person.id },
+        to: { type: "company", id: company.id },
+        kind: "works_at",
+      })
+
+      const personRelations = await crm.read("relation.list", {
+        workspaceId: "workspace_1",
+        type: "person",
+        id: person.id,
+      })
+      const companyRelations = await crm.read("relation.list", {
+        workspaceId: "workspace_1",
+        type: "company",
+        id: company.id,
+      })
+
+      assertEquals(personRelations, [relation])
+      assertEquals(companyRelations, [relation])
+    })
   })
 
-  await crm.write("record.archive", {
-    workspaceId: "workspace_1",
-    ref: { type: "task", id: task.id },
+  Deno.test(`${scenario.name}: relation validation is scoped to the input workspace`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+      const company = await crm.write("company.create", {
+        workspaceId: "workspace_2",
+        id: "company_1",
+        name: "Analytical Engines Ltd",
+      })
+
+      await assertRejects(
+        () =>
+          crm.write("relation.create", {
+            workspaceId: "workspace_1",
+            from: { type: "person", id: person.id },
+            to: { type: "company", id: company.id },
+            kind: "works_at",
+          }),
+        CrmNotFoundError,
+      )
+    })
   })
 
-  const visible = await crm.read("record.search", {
-    workspaceId: "workspace_1",
-    type: "task",
+  Deno.test(`${scenario.name}: archive hides records from default reads`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const task = await crm.write("task.create", {
+        workspaceId: "workspace_1",
+        title: "Follow up",
+        status: "todo",
+      })
+
+      await crm.write("record.archive", {
+        workspaceId: "workspace_1",
+        ref: { type: "task", id: task.id },
+      })
+
+      const visible = await crm.read("record.search", {
+        workspaceId: "workspace_1",
+        type: "task",
+      })
+      const archived = await crm.read("record.search", {
+        workspaceId: "workspace_1",
+        type: "task",
+        includeArchived: true,
+      })
+
+      assertEquals(visible, [])
+      assertEquals(archived.length, 1)
+      assertEquals(archived[0].archivedAt !== undefined, true)
+    })
   })
-  const archived = await crm.read("record.search", {
-    workspaceId: "workspace_1",
-    type: "task",
-    includeArchived: true,
+
+  Deno.test(`${scenario.name}: archived relations are hidden unless requested`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        name: "Ada Lovelace",
+      })
+      const company = await crm.write("company.create", {
+        workspaceId: "workspace_1",
+        name: "Analytical Engines Ltd",
+      })
+      const relation = await crm.write("relation.create", {
+        workspaceId: "workspace_1",
+        from: { type: "person", id: person.id },
+        to: { type: "company", id: company.id },
+        kind: "works_at",
+      })
+
+      await crm.write("record.archive", {
+        workspaceId: "workspace_1",
+        ref: { type: "relation", id: relation.id },
+      })
+
+      assertEquals(
+        await crm.read("relation.list", {
+          workspaceId: "workspace_1",
+          type: "person",
+          id: person.id,
+        }),
+        [],
+      )
+      assertEquals(
+        (await crm.read("relation.list", {
+          workspaceId: "workspace_1",
+          type: "person",
+          id: person.id,
+          includeArchived: true,
+        })).length,
+        1,
+      )
+    })
   })
 
-  assertEquals(visible, [])
-  assertEquals(archived.length, 1)
-  assertEquals(archived[0].archivedAt !== undefined, true)
-})
+  Deno.test(`${scenario.name}: timeline lists records directly related to a record`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+      const unrelated = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_2",
+        name: "Grace Hopper",
+      })
+      const activity = await crm.write("activity.create", {
+        workspaceId: "workspace_1",
+        id: "activity_1",
+        kind: "call",
+        occurredAt: "2026-01-02T00:00:00.000Z",
+        participants: [{ type: "person", id: person.id }],
+      })
+      const note = await crm.write("note.create", {
+        workspaceId: "workspace_1",
+        id: "note_1",
+        body: "Asked for details.",
+        related: [{ type: "person", id: person.id }],
+      })
 
-Deno.test("workspace context must match write input", async () => {
-  const crm = createCrmKernel({ id: sequenceId() })
+      const timeline = await crm.read("timeline.list", {
+        workspaceId: "workspace_1",
+        type: "person",
+        id: person.id,
+      })
 
-  await assertRejects(
-    () =>
-      crm.write(
+      assertEquals(timeline.some((record) => record.id === person.id), true)
+      assertEquals(timeline.some((record) => record.id === activity.id), true)
+      assertEquals(timeline.some((record) => record.id === note.id), true)
+      assertEquals(timeline.some((record) => record.id === unrelated.id), false)
+    })
+  })
+
+  Deno.test(`${scenario.name}: search filters are workspace isolated`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+      await crm.write("person.create", {
+        workspaceId: "workspace_2",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+
+      assertEquals(
+        await crm.read("record.get", {
+          workspaceId: "workspace_2",
+          type: "person",
+          id: "person_1",
+        }),
+        {
+          id: "person_1",
+          type: "person",
+          workspaceId: "workspace_2",
+          name: "Ada Lovelace",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          source: "manual",
+          version: 1,
+        },
+      )
+      assertEquals(
+        (await crm.read("record.search", {
+          workspaceId: "workspace_1",
+          type: "person",
+          text: "ada",
+        })).map((record) => record.workspaceId),
+        ["workspace_1"],
+      )
+    })
+  })
+
+  Deno.test(`${scenario.name}: search filters by tags, owner, source, and external reference`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const target = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+        ownerId: "user_1",
+        source: "import",
+        tags: ["vip", "newsletter"],
+        externalRefs: [{ system: "hubspot", id: "hs_1" }],
+      })
+      await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_2",
+        name: "Grace Hopper",
+        ownerId: "user_2",
+        source: "manual",
+        tags: ["newsletter"],
+        externalRefs: [{ system: "hubspot", id: "hs_2" }],
+      })
+
+      assertEquals(
+        await crm.read("record.search", {
+          workspaceId: "workspace_1",
+          type: "person",
+          ownerId: "user_1",
+          source: "import",
+          tags: ["vip"],
+          externalRef: { system: "hubspot", id: "hs_1" },
+        }),
+        [target],
+      )
+    })
+  })
+
+  Deno.test(`${scenario.name}: event listing is workspace scoped and limit aware`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+      await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_2",
+        name: "Grace Hopper",
+      })
+      await crm.write("person.create", {
+        workspaceId: "workspace_2",
+        id: "person_3",
+        name: "Katherine Johnson",
+      })
+
+      const events = await crm.read("event.list", {
+        workspaceId: "workspace_1",
+        limit: 1,
+      })
+
+      assertEquals(events.length, 1)
+      assertEquals(events[0].record.id, "person_2")
+      assertEquals(events[0].workspaceId, "workspace_1")
+    })
+  })
+
+  Deno.test(`${scenario.name}: workspace context must match write input`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await assertRejects(
+        () =>
+          crm.write(
+            "person.create",
+            {
+              workspaceId: "workspace_1",
+              name: "Ada Lovelace",
+            },
+            {
+              context: {
+                workspaceId: "workspace_2",
+                actor: { type: "agent", id: "agent_1" },
+              },
+            },
+          ),
+        CrmKernelError,
+        "workspaceId does not match",
+      )
+    })
+  })
+
+  Deno.test(`${scenario.name}: idempotency keys return the original write result`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const first = await crm.write(
         "person.create",
         {
           workspaceId: "workspace_1",
           name: "Ada Lovelace",
         },
+        { idempotencyKey: "csv:row:1" },
+      )
+      const second = await crm.write(
+        "person.create",
         {
-          context: {
-            workspaceId: "workspace_2",
-            actor: { type: "agent", id: "agent_1" },
-          },
+          workspaceId: "workspace_1",
+          name: "Ada Byron",
         },
-      ),
-    CrmKernelError,
-    "workspaceId does not match",
-  )
-})
+        { idempotencyKey: "csv:row:1" },
+      )
 
-Deno.test("idempotency keys return the original write result", async () => {
-  const crm = createCrmKernel({ id: sequenceId() })
+      const events = await crm.read("event.list", { workspaceId: "workspace_1" })
 
-  const first = await crm.write(
-    "person.create",
-    {
-      workspaceId: "workspace_1",
-      name: "Ada Lovelace",
-    },
-    { idempotencyKey: "csv:row:1" },
-  )
-  const second = await crm.write(
-    "person.create",
-    {
-      workspaceId: "workspace_1",
-      name: "Ada Byron",
-    },
-    { idempotencyKey: "csv:row:1" },
-  )
+      assertEquals(second, first)
+      assertEquals(events.length, 1)
+    })
+  })
 
-  const events = await crm.read("event.list", { workspaceId: "workspace_1" })
+  Deno.test(`${scenario.name}: idempotency keys are scoped by workspace and write name`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const workspaceOnePerson = await crm.write(
+        "person.create",
+        {
+          workspaceId: "workspace_1",
+          name: "Ada Lovelace",
+        },
+        { idempotencyKey: "same-key" },
+      )
+      const workspaceTwoPerson = await crm.write(
+        "person.create",
+        {
+          workspaceId: "workspace_2",
+          name: "Ada Lovelace",
+        },
+        { idempotencyKey: "same-key" },
+      )
+      const workspaceOneCompany = await crm.write(
+        "company.create",
+        {
+          workspaceId: "workspace_1",
+          name: "Analytical Engines Ltd",
+        },
+        { idempotencyKey: "same-key" },
+      )
 
-  assertEquals(second, first)
-  assertEquals(events.length, 1)
-})
+      assertEquals(workspaceOnePerson.workspaceId, "workspace_1")
+      assertEquals(workspaceTwoPerson.workspaceId, "workspace_2")
+      assertEquals(workspaceOneCompany.type, "company")
+      assertEquals(workspaceOnePerson.id === workspaceTwoPerson.id, false)
+    })
+  })
+}
+
+async function withKernel(
+  scenario: { createStorage: () => CloseableStorage },
+  fn: (crm: ReturnType<typeof createCrmKernel>) => Promise<void>,
+): Promise<void> {
+  const storage = scenario.createStorage()
+  try {
+    const crm = createCrmKernel({
+      storage,
+      now: () => new Date("2026-01-01T00:00:00.000Z"),
+      id: sequenceId(),
+    })
+    await fn(crm)
+  } finally {
+    storage.close?.()
+  }
+}
 
 function sequenceId(): () => string {
   let count = 0

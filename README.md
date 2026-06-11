@@ -54,8 +54,8 @@ const people = await crm.read("record.search", {
 })
 ```
 
-The first implementation includes the core APIs and an in-memory Storage API implementation. SQLite
-and Postgres/Supabase are first-class storage targets next.
+The first implementation includes the core APIs plus in-memory and SQLite Storage API
+implementations. Postgres/Supabase is the next first-class storage target.
 
 ## Package Direction
 
@@ -76,9 +76,12 @@ This repository uses Deno so the reference kernel can stay dependency-light.
 
 ```sh
 deno fmt
-deno check src/index.ts
-deno test
+deno task check
+deno task test
 ```
+
+`deno task test` grants the explicit permissions required by the SQLite native dependency and keeps
+network access scoped to the GitHub release hosts used for that dependency.
 
 ## Design Notes
 

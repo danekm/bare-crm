@@ -106,7 +106,7 @@ function createTx(db: Database): StorageTx {
 
       if (
         options?.expectedVersion !== undefined &&
-        current?.version !== options.expectedVersion
+        (current?.version ?? 0) !== options.expectedVersion
       ) {
         throw new StorageConflictError(record)
       }

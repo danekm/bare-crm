@@ -139,7 +139,7 @@ async function applyWrite<W extends WriteName>(
     case "record.update": {
       const updateInput = input as WriteInputByName["record.update"]
       const current = await getRequired(tx, updateInput.workspaceId, updateInput.ref)
-      return {
+      return compactRecord({
         ...current,
         ...updateInput.patch,
         id: current.id,
@@ -148,17 +148,17 @@ async function applyWrite<W extends WriteName>(
         createdAt: current.createdAt,
         updatedAt: timestamp,
         version: current.version + 1,
-      } as AnyRecord
+      } as AnyRecord)
     }
     case "record.archive": {
       const archiveInput = input as WriteInputByName["record.archive"]
       const current = await getRequired(tx, archiveInput.workspaceId, archiveInput.ref)
-      return {
+      return compactRecord({
         ...current,
         archivedAt: timestamp,
         updatedAt: timestamp,
         version: current.version + 1,
-      }
+      })
     }
     default:
       throw new Error(`Unsupported write: ${name satisfies never}`)
@@ -186,7 +186,7 @@ function createRecord<T extends AnyRecord>(
     version: 1,
   }
 
-  return { ...input, ...base } as T
+  return compactRecord({ ...input, ...base } as T)
 }
 
 function createEvent(
@@ -203,7 +203,7 @@ function createEvent(
     ? "archived"
     : "created"
 
-  return {
+  return compactObject({
     id: id(),
     workspaceId: record.workspaceId,
     name: `${record.type}.${verb}`,
@@ -214,7 +214,7 @@ function createEvent(
     causationId: options?.context?.causationId,
     correlationId: options?.context?.correlationId,
     idempotencyKey: options?.idempotencyKey,
-  }
+  })
 }
 
 async function readTimeline(
@@ -269,6 +269,7 @@ function getPutOptions(
   name: WriteName,
   record: AnyRecord,
 ): { expectedVersion?: number } | undefined {
+  if (name.endsWith(".create")) return { expectedVersion: 0 }
   if (name !== "record.update" && name !== "record.archive") return undefined
   return { expectedVersion: record.version - 1 }
 }
@@ -317,4 +318,14 @@ function sameRef(a: EntityRef, b: EntityRef): boolean {
 
 function randomId(): string {
   return crypto.randomUUID()
+}
+
+function compactRecord<T extends AnyRecord>(record: T): T {
+  return compactObject(record)
+}
+
+function compactObject<T extends Record<string, unknown>>(record: T): T {
+  return Object.fromEntries(
+    Object.entries(record).filter(([, value]) => value !== undefined),
+  ) as T
 }

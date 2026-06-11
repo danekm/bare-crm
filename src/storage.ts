@@ -43,7 +43,7 @@ export function createMemoryStorage(): StorageApi {
           const current = records.get(key(record))
           if (
             options?.expectedVersion !== undefined &&
-            current?.version !== options.expectedVersion
+            (current?.version ?? 0) !== options.expectedVersion
           ) {
             throw new StorageConflictError(record)
           }
@@ -64,6 +64,7 @@ export function createMemoryStorage(): StorageApi {
             .filter((record) => tagsMatch(record, input.tags))
             .filter((record) => externalRefMatches(record, input.externalRef))
             .filter((record) => !text || JSON.stringify(record).toLowerCase().includes(text))
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id))
             .slice(0, limit)
         },
 

@@ -158,9 +158,10 @@ export type CreateInput<T extends AnyRecord> =
     workspaceId: string
   }
 
-export type UpdateInput<T extends AnyRecord> = Partial<
-  Omit<T, "id" | "type" | "workspaceId" | "createdAt" | "updatedAt" | "version">
->
+export type UpdateInput<T extends AnyRecord> = T extends AnyRecord ? Partial<
+    Omit<T, "id" | "type" | "workspaceId" | "createdAt" | "updatedAt" | "version">
+  >
+  : never
 
 export type WriteInputByName = {
   "person.create": CreateInput<Person>
