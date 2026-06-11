@@ -2,6 +2,9 @@
 
 Bare CRM is organized around a very small kernel.
 
+The non-negotiable architecture invariants live in [Hard Rules](hard-rules.md). This document
+explains the shape; the hard-rules document is the sharper boundary contract.
+
 ```txt
 Bare CRM core kernel
   - core schema

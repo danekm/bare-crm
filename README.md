@@ -123,6 +123,7 @@ network access scoped to the GitHub release hosts used for that dependency.
 
 See `docs/` for the first architecture notes:
 
+- [Hard rules](docs/hard-rules.md)
 - [Architecture](docs/architecture.md)
 - [Entities](docs/entities.md)
 - [Write API](docs/write-api.md)

@@ -7,6 +7,9 @@ reliable, or easier to build on without turning it into a full CRM application.
 
 Keep universal infrastructure in the kernel. Put business-specific behavior above it.
 
+Before changing architecture boundaries, read [docs/hard-rules.md](docs/hard-rules.md). Those rules
+are invariants, not preferences.
+
 Good kernel changes usually affect:
 
 - record identity, workspace isolation, timestamps, versions, or archival semantics
