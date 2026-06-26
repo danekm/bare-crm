@@ -10,18 +10,31 @@ It is one plugin package with two runtime surfaces:
 
 The kernel does not gain Gmail-specific entities.
 
+The executable first slice lives in `src/adapters/gmail/`. It includes a portable `plugin.json`, a
+typed add-on card/action model, plugin-owned preference and review stores, a deterministic message
+runner, and a fakeable sync harness that processes `GmailMessageSnapshot` inputs through the
+Extension Host. `plugins/bare-gmail/` remains as a compatibility package shell and README location.
+
+Because Gmail can contain highly sensitive personal information, the plugin must follow
+[Plugin Data Safety](plugin-data-safety.md): minimize copied data, keep secrets and raw provider
+payloads out of CRM, scope every operation by workspace, and make sync idempotent.
+
 ## Why This Is Not A Second Inbox
 
 Gmail remains the communication surface. Bare CRM stores normalized business memory:
 
+- `Collection` for Gmail threads or larger customer conversations worth grouping
 - `Activity` for meaningful email interactions
 - `Task` for follow-ups implied by messages
 - `Note` for durable internal context
-- `Relation` for links to people, companies, deals, tasks, files, or activities
+- `Relation` for links to people, companies, deals, collections, tasks, files, or activities
 - `File` only when attachments or derived artifacts are worth preserving
 
 Raw Gmail concepts such as message id, thread id, history id, sync cursor, body hash, labels,
 classification score, ignored sender/domain rules, and review state are plugin-owned data.
+
+Raw Gmail messages, OAuth tokens, refresh tokens, label dumps, and full message payloads should not
+be stored in CRM records or operational output by default.
 
 ## Package Boundary
 
@@ -36,12 +49,14 @@ flowchart TB
   Sync --> Classifier["Classifier"]
   Sync --> Review["Review queue"]
 
-  Context --> Read["Read API"]
-  Actions --> Write["Write API"]
+  Context --> Host["Extension Host"]
+  Actions --> Host
   Classifier --> Review
-  Classifier --> Write
-  Review --> Write
+  Classifier --> Host
+  Review --> Host
 
+  Host --> Read["Read API"]
+  Host --> Write["Write API"]
   Write --> EventLog["Event Log"]
   Write --> Storage["Storage API"]
   Read --> Storage
@@ -71,12 +86,34 @@ Small actions:
 - ignore domain
 - mark as not CRM relevant
 
+The helper `createBareGmailAddonCard` renders a portable card model for this panel. The helper
+`createBareGmailAddonBackendRequest` carries the selected action plus stable Gmail message/thread
+refs to the plugin backend. A production Google Workspace add-on can translate this model into
+Google Card Service widgets without leaking Gmail-specific UI objects into the kernel.
+
+The helper `toGoogleWorkspaceCardSpec` performs that translation into a CardService-style card spec
+with headers, sections, decorated text, text paragraphs, button sets, and action parameters. The
+helper `createBareGmailGoogleWorkspaceManifest` declares the Gmail contextual trigger that opens the
+Bare panel for the current message.
+
 The add-on should identify the current Gmail message/thread, build a `GmailContextRequest`, and then
 use the Read API/MCP adapter to search people, companies, deals, timeline, and policy issues.
 
 ## Gmail Sync Adapter
 
-The sync adapter uses Gmail API OAuth and plugin-owned sync state.
+The sync adapter uses Gmail API OAuth and plugin-owned sync state. The current code has the tested
+transport/cursor boundary and a live Gmail API request adapter, but not a deployed Google OAuth
+consent app or Pub/Sub subscription.
+
+The helper `createGmailApiSyncTransport` implements the live Gmail API request boundary with
+injected access-token and `fetch` functions. It calls Gmail history, fetches changed message
+metadata, and maps responses into `GmailMessageSnapshot` without storing raw Gmail payloads in CRM.
+The helper `watchBareGmailMailbox` registers a Gmail mailbox watch for a Pub/Sub topic and returns
+the mailbox `historyId` seed for future sync.
+
+The helpers `refreshBareGmailAccessToken` and `createGmailRefreshAccessTokenProvider` implement the
+OAuth refresh-token boundary. They resolve client id, client secret, and refresh token from secret
+references at runtime and return short-lived access tokens for Gmail API calls.
 
 Expected flow:
 
@@ -89,9 +126,10 @@ Expected flow:
 7. Write only meaningful memory through the Write API.
 8. Store plugin-owned cursor/review state outside the kernel.
 
-The base suite does not implement live OAuth, Pub/Sub, or Gmail transport yet. The first executable
-slice is deterministic classification, dedupe refs, context request construction, and kernel draft
-mapping.
+The base suite does not ship a real OAuth consent app or Pub/Sub subscription. It does test the sync
+contract with `createStaticBareGmailSyncTransport` and the live API boundary with fake `fetch`
+responses: successful batches advance the cursor, failed batches do not, retries remain idempotent,
+and sync requires the `plugin:sync` grant.
 
 ## Classification Buckets
 
@@ -147,18 +185,31 @@ Feedback actions should update plugin-owned settings:
 
 Confirmed actions write through the Write API.
 
+The helper `createMemoryBareGmailPreferenceStore` is the executable test implementation of this
+boundary. Production storage should use encrypted plugin-owned state, not CRM records.
+
+The helper `queueBareGmailReviewItem` keeps uncertain `suggest` messages in plugin-owned review
+state. The helper `handleBareGmailReviewAction` converts user decisions into either plugin
+preference updates or Extension Host writes, including save activity, create follow-up, attach to a
+target record, and create lead.
+
+The helpers `createMemoryBareGmailPluginStateStore` and `createJsonFileBareGmailPluginStateStore`
+provide the executable state boundary for cursors, preferences, review items, and OAuth secret
+references. They store secret references such as `secret://...`, not raw OAuth token values.
+
 ## Kernel Command Usage
 
 Promoted or confirmed messages map to existing kernel writes:
 
-| Plugin action                 | Kernel operation  |
-| ----------------------------- | ----------------- |
-| save activity                 | `activity.create` |
-| create follow-up              | `task.create`     |
-| add context                   | `note.create`     |
-| attach to deal/person/company | `relation.create` |
-| update customer/deal state    | `record.update`   |
-| preserve attachment/artifact  | `file.create`     |
+| Plugin action                 | Kernel operation    |
+| ----------------------------- | ------------------- |
+| create/update thread context  | `collection.create` |
+| save activity                 | `activity.create`   |
+| create follow-up              | `task.create`       |
+| add context                   | `note.create`       |
+| attach to deal/person/company | `relation.create`   |
+| update customer/deal state    | `record.update`     |
+| preserve attachment/artifact  | `file.create`       |
 
 Use `source: "plugin"` and `externalRefs`:
 
@@ -170,6 +221,12 @@ Use `source: "plugin"` and `externalRefs`:
 ```
 
 Plugin-owned Gmail detail belongs in `custom.gmail`.
+
+The helper `createGmailThreadCollectionInput` maps a Gmail message snapshot into a `gmail.thread`
+collection draft. `createGmailActivityInput` maps the message into an email activity, and
+`createGmailFollowUpTaskInput` maps follow-up intent into a task. A real sync plugin should call
+these helpers through the Extension Host so approved capabilities and collection profiles are
+enforced before writes reach the kernel.
 
 ## Dedupe
 

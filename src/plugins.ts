@@ -8,6 +8,7 @@ export type PluginRuntimeCapability =
   | "plugin:commands"
   | "plugin:ui"
   | "plugin:sync"
+  | "plugin:profiles"
   | "network:external"
   | "secrets:read"
   | "files:read"
@@ -19,6 +20,15 @@ export type PluginFieldContribution = {
   label: string
   type: "string" | "number" | "boolean" | "datetime" | "json"
   required?: boolean
+}
+
+export type PluginCollectionProfileContribution = {
+  id: string
+  name: string
+  allowedStatuses?: string[]
+  allowedOutcomes?: string[]
+  requiredRelated?: EntityType[]
+  optionalRelated?: EntityType[]
 }
 
 export type PluginPolicyContribution = {
@@ -42,9 +52,25 @@ export type PluginCommandContribution = {
   requires: PluginRuntimeCapability[]
 }
 
+export type PluginUiSlotName =
+  | "workspace.nav"
+  | "workspace.route"
+  | "record.header"
+  | "record.sidebar"
+  | "command.palette"
+  | "command.composer"
+  | "agent.responseCard"
+
 export type PluginUiSlotContribution = {
   id: string
-  slot: "record.sidebar" | "record.header" | "workspace.nav" | "command.palette"
+  slot: PluginUiSlotName
+  label?: string
+  description?: string
+  icon?: string
+  route?: string
+  commandId?: string
+  recordTypes?: EntityType[]
+  requires?: PluginRuntimeCapability[]
 }
 
 export type PluginSyncContribution = {
@@ -56,6 +82,7 @@ export type PluginSyncContribution = {
 
 export type PluginContributions = {
   fields?: PluginFieldContribution[]
+  collectionProfiles?: PluginCollectionProfileContribution[]
   policies?: PluginPolicyContribution[]
   workflows?: PluginWorkflowContribution[]
   commands?: PluginCommandContribution[]
@@ -95,13 +122,44 @@ const allowedRuntimeCapabilities = new Set<PluginRuntimeCapability>([
   "plugin:commands",
   "plugin:ui",
   "plugin:sync",
+  "plugin:profiles",
   "network:external",
   "secrets:read",
   "files:read",
   "files:write",
 ])
 
-const contributionKeys = ["fields", "policies", "workflows", "commands", "uiSlots", "syncs"]
+const contributionKeys = [
+  "fields",
+  "collectionProfiles",
+  "policies",
+  "workflows",
+  "commands",
+  "uiSlots",
+  "syncs",
+]
+
+const allowedUiSlots = new Set<PluginUiSlotName>([
+  "workspace.nav",
+  "workspace.route",
+  "record.header",
+  "record.sidebar",
+  "command.palette",
+  "command.composer",
+  "agent.responseCard",
+])
+
+const allowedEntityTypes = new Set<EntityType>([
+  "person",
+  "company",
+  "deal",
+  "collection",
+  "activity",
+  "note",
+  "task",
+  "file",
+  "relation",
+])
 
 export function validatePluginManifest(value: unknown): PluginManifest {
   if (!isRecord(value)) {
@@ -186,7 +244,63 @@ function normalizeContributions(value: unknown): PluginContributions {
     }
   }
 
-  return value as PluginContributions
+  const contributions = value as PluginContributions
+  for (const slot of contributions.uiSlots ?? []) {
+    validateUiSlotContribution(slot)
+  }
+
+  return contributions
+}
+
+function validateUiSlotContribution(value: unknown): asserts value is PluginUiSlotContribution {
+  if (!isRecord(value)) {
+    throw new PluginManifestError("plugin.invalid", "Plugin UI slot contribution must be an object")
+  }
+  assertString(value.id, "uiSlots.id")
+  assertString(value.slot, "uiSlots.slot")
+  if (!allowedUiSlots.has(value.slot as PluginUiSlotName)) {
+    throw new PluginManifestError(
+      "plugin.invalid",
+      `Unknown plugin UI slot: ${value.slot}`,
+    )
+  }
+
+  for (const optional of ["label", "description", "icon", "route", "commandId"]) {
+    if (value[optional] !== undefined && typeof value[optional] !== "string") {
+      throw new PluginManifestError(
+        "plugin.invalid",
+        `Plugin UI slot ${optional} must be a string`,
+      )
+    }
+  }
+
+  if (value.recordTypes !== undefined) {
+    if (!Array.isArray(value.recordTypes)) {
+      throw new PluginManifestError(
+        "plugin.invalid",
+        "Plugin UI slot recordTypes must be an array",
+      )
+    }
+    for (const recordType of value.recordTypes) {
+      assertString(recordType, "uiSlots.recordTypes")
+      if (!allowedEntityTypes.has(recordType as EntityType)) {
+        throw new PluginManifestError(
+          "plugin.invalid",
+          `Unknown plugin UI slot record type: ${recordType}`,
+        )
+      }
+    }
+  }
+
+  if (value.requires !== undefined) {
+    if (!Array.isArray(value.requires)) {
+      throw new PluginManifestError("plugin.invalid", "Plugin UI slot requires must be an array")
+    }
+    for (const capability of value.requires) {
+      assertString(capability, "uiSlots.requires")
+      assertAllowedCapability(capability)
+    }
+  }
 }
 
 function assertAllowedCapability(capability: string): void {

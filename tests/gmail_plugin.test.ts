@@ -5,6 +5,7 @@ import {
   createGmailContextRequest,
   createGmailExternalRefs,
   createGmailFollowUpTaskInput,
+  createGmailThreadCollectionInput,
   gmailMessageDedupeKey,
   type GmailMessageSnapshot,
 } from "../src/index.ts"
@@ -104,6 +105,31 @@ Deno.test("Gmail plugin maps promoted messages to existing kernel primitives", (
     knownCustomerDomains: ["acme.com"],
   })
   const related = [{ type: "company" as const, id: "company_1" }]
+
+  assertEquals(
+    createGmailThreadCollectionInput({
+      workspaceId: "workspace_1",
+      message: baseMessage,
+      related,
+    }),
+    {
+      workspaceId: "workspace_1",
+      title: "Renewal pricing and next steps",
+      kind: "gmail.thread",
+      status: "open",
+      related,
+      source: "plugin",
+      externalRefs: [
+        { system: "gmail", id: "thread:thread_1", kind: "source" },
+      ],
+      custom: {
+        gmail: {
+          threadId: "thread_1",
+          firstMessageId: "msg_1",
+        },
+      },
+    },
+  )
 
   assertEquals(
     createGmailActivityInput({

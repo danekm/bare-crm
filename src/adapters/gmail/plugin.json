@@ -1,0 +1,104 @@
+{
+  "id": "bare.gmail",
+  "name": "Bare Gmail Workspace",
+  "version": "0.1.0",
+  "description": "Workspace-scoped Gmail plugin that turns meaningful threads into Bare CRM collections, activities, and follow-up tasks.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:person.create",
+    "crm:write:company.create",
+    "crm:write:collection.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "crm:write:relation.create",
+    "crm:write:record.update",
+    "plugin:commands",
+    "plugin:ui",
+    "plugin:profiles",
+    "plugin:sync",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "activity",
+        "key": "gmail",
+        "label": "Gmail provenance",
+        "type": "json"
+      },
+      {
+        "entity": "collection",
+        "key": "gmail",
+        "label": "Gmail thread state",
+        "type": "json"
+      },
+      {
+        "entity": "task",
+        "key": "gmail",
+        "label": "Gmail follow-up provenance",
+        "type": "json"
+      }
+    ],
+    "collectionProfiles": [
+      {
+        "id": "gmail.thread",
+        "name": "Gmail thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["no_action", "responded", "converted", "archived"],
+        "optionalRelated": ["person", "company", "deal", "activity", "note", "task", "file"]
+      }
+    ],
+    "commands": [
+      {
+        "id": "gmail.attach_to_record",
+        "name": "Attach Gmail thread to Bare record",
+        "requires": ["crm:read:record.search", "crm:write:relation.create"]
+      },
+      {
+        "id": "gmail.create_lead",
+        "name": "Create lead from Gmail sender",
+        "requires": ["crm:write:person.create", "crm:write:company.create"]
+      },
+      {
+        "id": "gmail.save_activity",
+        "name": "Save Gmail message as activity",
+        "requires": ["crm:write:activity.create"]
+      },
+      {
+        "id": "gmail.create_follow_up",
+        "name": "Create Gmail follow-up task",
+        "requires": ["crm:write:task.create"]
+      },
+      {
+        "id": "gmail.ignore_sender",
+        "name": "Ignore Gmail sender",
+        "requires": ["plugin:commands"]
+      },
+      {
+        "id": "gmail.ignore_domain",
+        "name": "Ignore Gmail domain",
+        "requires": ["plugin:commands"]
+      },
+      {
+        "id": "gmail.mark_not_crm_relevant",
+        "name": "Mark Gmail message as not CRM relevant",
+        "requires": ["plugin:commands"]
+      }
+    ],
+    "uiSlots": [
+      {
+        "id": "gmail-context-card",
+        "slot": "record.sidebar"
+      }
+    ],
+    "syncs": [
+      {
+        "id": "gmail.message-sync",
+        "name": "Gmail message sync",
+        "system": "gmail",
+        "direction": "import"
+      }
+    ]
+  }
+}

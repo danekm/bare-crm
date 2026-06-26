@@ -1,16 +1,17 @@
 # Read API
 
-The Read API is the only official way to read CRM facts without exposing storage internals.
+The Read API is the official way to read CRM facts without exposing storage internals. It stays
+small on purpose: kernel reads return durable CRM records, relations, and events.
 
 ```ts
 await crm.read("record.get", { workspaceId, type, id })
-await crm.read("record.search", { workspaceId, type, text })
-await crm.read("timeline.list", { workspaceId, type, id })
-await crm.read("relation.list", { workspaceId, type, id })
-await crm.read("event.list", { workspaceId })
+await crm.read("record.search", { workspaceId, type, text, limit })
+await crm.read("timeline.list", { workspaceId, type, id, limit })
+await crm.read("relation.list", { workspaceId, type, id, limit })
+await crm.read("event.list", { workspaceId, limit })
 ```
 
-## Initial Operations
+## Kernel Operations
 
 - `record.get`
 - `record.search`
@@ -98,11 +99,73 @@ Archived records are excluded from default reads. Callers must opt in with `incl
 `includeArchived` defaults to `false` for record, relation, and timeline reads. Event Log reads keep
 history for archived records because events are audit history.
 
-## Pagination And Limits
+## Compact Reads
 
-The first milestone uses `limit` rather than cursor pagination. Storage adapters should return
-deterministic bounded results for the same committed state. Cursor pagination can be added later
-without exposing storage internals.
+Agent-facing and CLI-facing code can use the optional compact read helper. This helper is exported
+separately from the kernel so token budgets, cursors, field projection, and summaries can evolve
+without changing the durable CRM contract.
+
+Compact reads are deterministic projections for adapter boundaries. They do not modify stored CRM
+data, infer record importance, rank items by salience, or replace canonical Read API results.
+
+```ts
+import { readCompact } from "@bare-crm/kernel/compact-read"
+
+const page = await readCompact(
+  crm,
+  {
+    operation: "record.search",
+    input: {
+      workspaceId: "workspace_1",
+      type: "person",
+      text: "ada",
+    },
+  },
+  {
+    fields: ["id", "type", "name", "emails"],
+    limit: 10,
+    tokenBudget: 1200,
+  },
+)
+// -> {
+//   items: Array<Record<string, unknown>>,
+//   nextCursor?: string,
+//   pageInfo: {
+//     limit: number,
+//     returned: number,
+//     hasMore: boolean,
+//     mode: "full" | "summary" | "fields",
+//     estimatedTokens: number,
+//     tokenBudget?: number
+//   }
+// }
+```
+
+Supported compact operations:
+
+- `record.search`
+- `timeline.list`
+- `event.list`
+
+Compact read options:
+
+- `fields`: return only selected top-level fields
+- `summary`: return compact CRM summaries instead of full records or events
+- `limit`: cap the maximum item count
+- `cursor`: continue from a previous compact page
+- `tokenBudget`: cap the approximate response size
+- `readOptions`: pass kernel read options such as execution context
+
+The cursor input is named `cursor`; the response token is named `nextCursor`. `pageInfo.hasMore`
+mirrors whether another compact page is available.
+
+`cursor` is an opaque pagination pointer, not a workflow resume token. Callers should store it only
+long enough to continue reading the same compact operation, and they should not parse or construct
+it themselves.
+
+Token estimates are intentionally approximate. The helper estimates response tokens from serialized
+JSON size and stops adding items when the next item would exceed `tokenBudget`. If the first item is
+larger than the budget, the page may include that single item so callers can still make progress.
 
 ## Timeline
 
@@ -110,6 +173,8 @@ The timeline read returns records related to a target record:
 
 - the direct target record when it matches the read
 - relation records touching the target
+- collections that include the target record
+- records included by a target collection's `related` refs
 - activities with `related` or `participants`
 - notes, tasks, and files with `related`
 

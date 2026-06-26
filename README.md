@@ -1,7 +1,7 @@
 # Bare CRM
 
 Bare CRM is an experimental CRM kernel: a small, stable Write API, Read API, Event Log, and Storage
-API for people, companies, deals, activities, notes, tasks, files, and relationships.
+API for people, companies, deals, collections, activities, notes, tasks, files, and relationships.
 
 The goal is not to ship a full CRM first. The goal is to make the smallest useful core that other
 products, agents, MCP servers, automations, and plugins can build on without depending on a bloated
@@ -25,7 +25,7 @@ or agent runtime.
 - **Read API over storage access:** every consumer reads through stable CRM queries.
 - **Events over hidden side effects:** every successful mutation emits a durable event.
 - **Policies over hardcoded sales assumptions:** teams can enforce their own rules above the kernel.
-- **Plugins over schema sprawl:** extensions add fields, workflows, UI slots, syncs, and actions.
+- **Plugins over schema sprawl:** extensions declare metadata and capabilities above the kernel.
 - **MCP-native, not MCP-dependent:** agents can use the CRM through MCP, while the kernel remains a
   normal library.
 - **No runner in core:** workflows, jobs, UI, and Noros/agents live outside the kernel.
@@ -51,6 +51,7 @@ interfaces without becoming a swollen CRM application itself.
 - `Person`
 - `Company`
 - `Deal`
+- `Collection`
 - `Activity`
 - `Note`
 - `Task`
@@ -81,6 +82,40 @@ const people = await crm.read("record.search", {
 The first implementation includes the core APIs plus in-memory, SQLite, and Postgres/Supabase
 Storage API implementations.
 
+## Install
+
+For package and CLI installation, see [Install](docs/install.md).
+
+Local development:
+
+```sh
+deno task crm -- help
+```
+
+Intended package install after publish:
+
+```sh
+deno add jsr:@bare-crm/kernel
+deno install -g --allow-read --allow-write --allow-env --allow-ffi -n crm jsr:@bare-crm/kernel/cli
+```
+
+Small starter wizard after npm publish:
+
+```sh
+npx -y @bare-crm/wizard@latest init my-crm
+```
+
+Release publishing is tag-based from GitHub Actions:
+
+```sh
+deno task publish:dry-run
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The tag triggers `.github/workflows/publish.yml`, which publishes `jsr:@bare-crm/kernel` after
+format, typecheck, and tests pass.
+
 ## Package Direction
 
 The initial repository starts as one Deno package. As the surface hardens, the likely package split
@@ -89,10 +124,15 @@ is:
 - `@bare-crm/kernel` for schema, Write API, Read API, Event Log, and Storage API
 - `@bare-crm/sqlite` for the SQLite Storage API implementation
 - `@bare-crm/postgres` for the Postgres/Supabase Storage API implementation
-- `@bare-crm/mcp` for optional model and agent access
-- `@bare-crm/plugin-sdk` for optional extensions
-- `@bare-crm/workflows` for optional event listeners and job helpers
 - `@bare-crm/cli` for optional local operation and development
+
+Everything else should stay experimental until the kernel contracts are stable:
+
+- MCP and agent access
+- plugin SDK and extension host
+- workflow packages and runners
+- Gmail and app-user lookup plugins
+- dashboards and frontend workbenches
 
 ## Open Source Posture
 
@@ -114,14 +154,32 @@ This repository uses Deno so the reference kernel can stay dependency-light.
 deno fmt
 deno task check
 deno task test
+deno task crm -- help
 ```
 
 `deno task test` grants the explicit permissions required by the SQLite native dependency and keeps
 network access scoped to the GitHub release hosts used for that dependency.
 
+The local operator CLI is intentionally small and boring. See [CLI](docs/cli.md) for the current
+`crm doctor`, schema, and plugin validation commands.
+
+## Documentation Site
+
+The public docs site is generated from `README.md` and `docs/` into `docs-site/`:
+
+```sh
+deno task docs:site
+deno task docs:check
+npm install --prefix docs-site
+npm run docs:build --prefix docs-site
+```
+
+The GitHub Pages workflow regenerates the site before deploying, so source docs remain canonical and
+the site self-updates from them.
+
 ## Design Notes
 
-See `docs/` for the first architecture notes:
+Start with the small kernel docs:
 
 - [Hard rules](docs/hard-rules.md)
 - [Architecture](docs/architecture.md)
@@ -132,16 +190,36 @@ See `docs/` for the first architecture notes:
 - [Storage API](docs/storage-api.md)
 - [SQLite](docs/sqlite.md)
 - [Postgres and Supabase](docs/postgres-supabase.md)
+- [Install](docs/install.md)
+- [Project Wizard](docs/wizard.md)
+- [Publishing](docs/publishing.md)
+- [CLI](docs/cli.md)
+- [Admin surface](docs/admin-surface.md)
+- [Open source plan](docs/open-source.md)
+- [Permissions](docs/permissions.md)
+- [Privacy safety](docs/privacy-safety.md)
+- [Conformance tests](docs/conformance.md)
+- [Test portfolio](docs/test-portfolio.md)
+
+Advanced and experimental notes live beside the core docs, but they should not define the public
+center of gravity:
+
 - [Import and export](docs/import-export.md)
 - [Channel strategy](docs/channel-strategy.md)
+- [App user lookup](docs/app-user-lookup.md)
 - [Bare Gmail plugin](docs/gmail-plugin.md)
+- [Bare Google Tasks plugin](docs/google-tasks-plugin.md)
+- [Bare Granola plugin](docs/granola-plugin.md)
 - [Policies and workflows](docs/policies-workflows.md)
 - [Plugins](docs/plugins.md)
 - [Plugin development](docs/plugin-development.md)
+- [Plugin data safety](docs/plugin-data-safety.md)
+- [Plugin-enabled workbench UI](docs/workbench-ui.md)
+- [Generated plugin safety coverage](docs/generated/plugin-safety-coverage.md)
+- [Extension Host](docs/extension-host.md)
 - [MCP adapter](docs/mcp.md)
+- [Dashboard](docs/dashboard.md)
 - [Noros integration](docs/noros.md)
-- [Open source plan](docs/open-source.md)
-- [Permissions](docs/permissions.md)
-- [Conformance tests](docs/conformance.md)
 
-The Linear project tracks implementation tickets.
+Implementation tickets are tracked in the
+[BareCRM Linear team](https://linear.app/7steps/team/CRM/overview).

@@ -62,6 +62,14 @@ for (const scenario of kernelScenarios) {
         stage: "qualified",
         status: "open",
       })
+      const collection = await crm.write("collection.create", {
+        workspaceId: "workspace_1",
+        id: "collection_1",
+        title: "Difference Engine rollout context",
+        kind: "sales.rollout",
+        status: "open",
+        related: [{ type: "deal", id: deal.id }],
+      })
       const activity = await crm.write("activity.create", {
         workspaceId: "workspace_1",
         id: "activity_1",
@@ -97,8 +105,20 @@ for (const scenario of kernelScenarios) {
       })
 
       assertEquals(
-        [person, company, deal, activity, note, task, file, relation].map((record) => record.type),
-        ["person", "company", "deal", "activity", "note", "task", "file", "relation"],
+        [person, company, deal, collection, activity, note, task, file, relation].map((record) =>
+          record.type
+        ),
+        [
+          "person",
+          "company",
+          "deal",
+          "collection",
+          "activity",
+          "note",
+          "task",
+          "file",
+          "relation",
+        ],
       )
       assertEquals(
         await crm.read("record.get", {
@@ -212,6 +232,119 @@ for (const scenario of kernelScenarios) {
           return record.name
         }),
         ["First Company"],
+      )
+    })
+  })
+
+  Deno.test(`${scenario.name}: Write API rejects nonconformant input before commit`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await assertRejects(
+        () =>
+          crm.write("person.create", {
+            workspaceId: "workspace_1",
+            name: "Ada Lovelace",
+            rawPayload: { provider: "hubspot" },
+          } as never),
+        CrmKernelError,
+        "Unknown field",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("task.create", {
+            workspaceId: "workspace_1",
+            title: "Follow up",
+            status: "later",
+          } as never),
+        CrmKernelError,
+        "status must be one of",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("activity.create", {
+            workspaceId: "workspace_1",
+            kind: "message",
+            occurredAt: "2026-01-02T00:00:00.000Z",
+            direction: "sideways",
+          } as never),
+        CrmKernelError,
+        "direction must be one of",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("company.create", {
+            workspaceId: "workspace_1",
+            name: "Acme",
+            externalRefs: [{ system: "hubspot" }],
+          } as never),
+        CrmKernelError,
+        "externalRefs.0.id",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("note.create", {
+            workspaceId: "workspace_1",
+            body: "Missing related refs.",
+            related: [{ type: "widget", id: "widget_1" }],
+          } as never),
+        CrmKernelError,
+        "related.0.type",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("person.create", {
+            workspaceId: "workspace_1",
+            name: "Ada Lovelace",
+            custom: "raw custom blob",
+          } as never),
+        CrmKernelError,
+        "custom must be an object",
+      )
+
+      assertEquals(
+        await crm.read("record.search", { workspaceId: "workspace_1", includeArchived: true }),
+        [],
+      )
+    })
+  })
+
+  Deno.test(`${scenario.name}: record.update rejects identity and unknown patch fields`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+
+      await assertRejects(
+        () =>
+          crm.write("record.update", {
+            workspaceId: "workspace_1",
+            ref: { type: "person", id: person.id },
+            patch: { id: "person_2" },
+          } as never),
+        CrmKernelError,
+        "cannot change id",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("record.update", {
+            workspaceId: "workspace_1",
+            ref: { type: "person", id: person.id },
+            patch: { rawPayload: { unsafe: true } },
+          } as never),
+        CrmKernelError,
+        "Unknown update patch field",
+      )
+
+      assertEquals(
+        await crm.read("record.get", { workspaceId: "workspace_1", type: "person", id: person.id }),
+        person,
       )
     })
   })
@@ -391,6 +524,76 @@ for (const scenario of kernelScenarios) {
       assertEquals(timeline.some((record) => record.id === activity.id), true)
       assertEquals(timeline.some((record) => record.id === note.id), true)
       assertEquals(timeline.some((record) => record.id === unrelated.id), false)
+    })
+  })
+
+  Deno.test(`${scenario.name}: collections group related records without owning profile logic`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await assertRejects(
+        () =>
+          crm.write("collection.create", {
+            workspaceId: "workspace_1",
+            title: "Missing members",
+            kind: "gmail.thread",
+            related: [{ type: "activity", id: "missing_activity" }],
+          }),
+        CrmNotFoundError,
+      )
+
+      const activity = await crm.write("activity.create", {
+        workspaceId: "workspace_1",
+        id: "activity_1",
+        kind: "email",
+        subject: "Renewal pricing",
+        occurredAt: "2026-01-02T00:00:00.000Z",
+      })
+      const note = await crm.write("note.create", {
+        workspaceId: "workspace_1",
+        id: "note_1",
+        body: "Customer asked for renewal terms.",
+        related: [{ type: "activity", id: activity.id }],
+      })
+      const unrelated = await crm.write("task.create", {
+        workspaceId: "workspace_1",
+        id: "task_1",
+        title: "Unrelated follow-up",
+        status: "todo",
+      })
+      const collection = await crm.write("collection.create", {
+        workspaceId: "workspace_1",
+        id: "collection_1",
+        title: "Acme renewal discussion",
+        kind: "sales.renewal",
+        status: "open",
+        related: [
+          { type: "activity", id: activity.id },
+          { type: "note", id: note.id },
+        ],
+        outcome: {
+          code: "pending",
+          summary: "Waiting on pricing approval.",
+          related: [{ type: "activity", id: activity.id }],
+        },
+      })
+
+      const timeline = await crm.read("timeline.list", {
+        workspaceId: "workspace_1",
+        type: "collection",
+        id: collection.id,
+      })
+
+      assertEquals(timeline.some((record) => record.id === collection.id), true)
+      assertEquals(timeline.some((record) => record.id === activity.id), true)
+      assertEquals(timeline.some((record) => record.id === note.id), true)
+      assertEquals(timeline.some((record) => record.id === unrelated.id), false)
+
+      const activityTimeline = await crm.read("timeline.list", {
+        workspaceId: "workspace_1",
+        type: "activity",
+        id: activity.id,
+      })
+
+      assertEquals(activityTimeline.some((record) => record.id === collection.id), true)
     })
   })
 

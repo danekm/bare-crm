@@ -5,6 +5,7 @@ The kernel owns a small set of universal CRM records:
 - `Person`
 - `Company`
 - `Deal`
+- `Collection`
 - `Activity`
 - `Note`
 - `Task`
@@ -48,6 +49,30 @@ Every record has:
 - optional: `companyId`, `personIds`, `value`, `currency`, `probability`, `expectedCloseAt`,
   `closedAt`, `pipelineId`
 
+`Collection`:
+
+- required: `title`, `kind`
+- optional: `status`, `related`, `outcome`
+
+Collections group records into one durable business context, such as a renewal discussion,
+partnership workstream, support escalation, account research packet, onboarding case, or provider
+thread. The kernel stores the grouping; plugins, agents, users, and extension-host profiles decide
+what belongs in it.
+
+Collection `kind`, `status`, and `outcome.code` are plain strings. Their allowed values are not
+kernel enums. Optional collection profiles above the kernel define workspace-specific meaning.
+
+`outcome` is structured as:
+
+```ts
+{
+  code: string
+  summary?: string
+  occurredAt?: string
+  related?: EntityRef[]
+}
+```
+
 `Activity`:
 
 - required: `kind`, `occurredAt`
@@ -89,6 +114,23 @@ Examples:
 Relation endpoints must be typed refs to existing records in the same workspace. Relations are the
 preferred way to model cross-entity meaning when a link is not a universal field.
 
+## Collections
+
+Collections are first-class records. They model durable groupings of records rather than typed
+edges.
+
+Examples:
+
+- `sales.renewal`: email activities, meetings, notes, proposal files, follow-up tasks, and the
+  related deal
+- `gmail.thread`: normalized activities and notes derived from one provider thread
+- `support.escalation`: customer messages, internal notes, tasks, files, and affected account
+- `partner.workstream`: people, companies, decisions, files, tasks, and implementation activities
+
+Collection `related` refs must point to existing records in the same workspace. `timeline.list` for
+a collection returns the collection and its related records. `timeline.list` for a related record
+can also surface collections that include that record.
+
 ## Kernel Invariants
 
 The kernel enforces universal storage and identity rules:
@@ -96,6 +138,7 @@ The kernel enforces universal storage and identity rules:
 - records have stable identity, type, workspace, timestamps, and version
 - write inputs use known entity types and operation names
 - relation endpoints exist in the same workspace
+- collection related and outcome refs exist in the same workspace
 - updates preserve `id`, `type`, `workspaceId`, and `createdAt`
 - updates advance `version`
 - archives set `archivedAt` and hide records from default reads
@@ -111,5 +154,6 @@ The kernel does not require:
 - every person to have an email
 - every task to have an assignee
 - every deal stage to follow a built-in pipeline
+- every collection to use a built-in kind, status, or outcome
 
 Those are optional policies above the kernel.

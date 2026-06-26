@@ -1,0 +1,56 @@
+{
+  "id": "bare.google-tasks",
+  "name": "Bare Google Tasks Sync",
+  "version": "0.1.0",
+  "description": "Bidirectional Google Tasks adapter that syncs selected Bare CRM tasks to a Google task list and pulls completion/deletion state back into CRM.",
+  "capabilities": [
+    "crm:read:record.get",
+    "crm:read:record.search",
+    "crm:read:event.list",
+    "crm:write:task.create",
+    "crm:write:record.update",
+    "plugin:commands",
+    "plugin:sync",
+    "plugin:workflows",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "task",
+        "key": "googleTasks",
+        "label": "Google Tasks sync state",
+        "type": "json"
+      }
+    ],
+    "commands": [
+      {
+        "id": "google_tasks.sync",
+        "name": "Sync Bare CRM tasks with Google Tasks",
+        "requires": ["network:external", "secrets:read", "crm:read:record.search"]
+      },
+      {
+        "id": "google_tasks.push_task",
+        "name": "Send CRM task to Google Tasks",
+        "requires": ["network:external", "crm:read:record.get", "crm:write:record.update"]
+      }
+    ],
+    "workflows": [
+      {
+        "id": "google-tasks.task-sync",
+        "name": "Sync CRM task changes to Google Tasks",
+        "listensTo": ["task.created", "task.updated", "task.archived"],
+        "writes": ["record.update"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "google-tasks.bidirectional-sync",
+        "name": "Google Tasks bidirectional sync",
+        "system": "google-tasks",
+        "direction": "bidirectional"
+      }
+    ]
+  }
+}

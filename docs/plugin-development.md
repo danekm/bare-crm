@@ -36,6 +36,9 @@ flowchart TB
 Plugins never access the Storage API or database directly. That is `HR-001` in
 [Hard rules](hard-rules.md).
 
+Plugins that move personal information or provider data must also follow
+[Plugin Data Safety](plugin-data-safety.md).
+
 ## What A Plugin Owns
 
 A plugin may own:
@@ -58,6 +61,7 @@ Write API.
 The kernel owns:
 
 - CRM records and relations
+- collections that group CRM records into durable business contexts
 - entity IDs and versions
 - workspace scoping
 - writes and validation
@@ -102,13 +106,23 @@ Every plugin starts with a manifest:
   "description": "Creates CRM tasks and notes from selected Gmail messages.",
   "capabilities": [
     "crm:read:record.search",
+    "crm:write:collection.create",
     "crm:write:task.create",
     "crm:write:note.create",
     "plugin:sync",
+    "plugin:profiles",
     "network:external",
     "secrets:read"
   ],
   "contributes": {
+    "collectionProfiles": [
+      {
+        "id": "gmail.thread",
+        "name": "Gmail thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["responded", "converted", "no_action"]
+      }
+    ],
     "syncs": [
       {
         "id": "gmail-inbox",
@@ -135,20 +149,23 @@ CRM capabilities describe what the plugin can ask the kernel to do:
 - `crm:write:person.create`
 - `crm:write:company.create`
 - `crm:write:deal.create`
+- `crm:write:collection.create`
 - `crm:write:task.create`
 - `crm:write:note.create`
 - `crm:write:record.update`
-- `crm:write:relation.upsert`
-- `crm:write:record.delete`
+- `crm:write:relation.create`
+- `crm:write:record.archive`
 
-Runtime capabilities describe what the plugin runtime may need outside the kernel:
+Runtime capabilities describe what the plugin runtime may need outside the kernel. For now,
+`plugin:commands` is the only stable metadata capability. The broader capability names remain
+experimental:
 
 - `plugin:fields`
 - `plugin:policies`
 - `plugin:workflows`
-- `plugin:commands`
 - `plugin:ui`
 - `plugin:sync`
+- `plugin:profiles`
 - `network:external`
 - `secrets:read`
 - `files:read`
@@ -162,16 +179,25 @@ capabilities remain outside the kernel.
 Plugin contributions are declarations. They describe what the plugin can add, but they do not run
 inside the kernel.
 
-Supported contribution families:
+Stable contribution families should stay tiny until the kernel contracts settle:
+
+- `commands`: explicit plugin actions a host/runtime can expose
+
+Experimental contribution families:
 
 - `fields`: additional typed fields a host app can render or persist through normal record writes
+- `collectionProfiles`: collection kind, status, outcome, and related-record profiles that an
+  Extension Host can validate above the kernel
 - `policies`: optional package-level rules enforced by a host/runtime before calling the Write API
 - `workflows`: optional automations run by a plugin runtime, not by the kernel
-- `commands`: explicit plugin actions a host/runtime can expose
 - `uiSlots`: optional UI surfaces for apps that have a UI
 - `syncs`: external system sync declarations
 
 The kernel can know that these contributions exist without becoming a plugin runner.
+
+UI slot contributions are declarative. They can include labels, icons, routes, command IDs,
+record-type filters, and required capabilities, but they do not point to executable frontend
+modules. A workbench host decides which trusted components it can render for approved slots.
 
 ## Reading CRM Data
 
@@ -226,6 +252,8 @@ Recommended plugin tests:
 
 - manifest validation accepts the published `plugin.json`
 - manifest validation rejects accidental `storage:*` capabilities
+- docs or tests state the plugin's data minimization, secrets, workspace scope, and raw payload
+  posture
 - command handlers call only the Read API and Write API
 - sync handlers are idempotent for repeated provider events
 - write commands include the expected actor and workspace context

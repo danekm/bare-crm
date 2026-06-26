@@ -1,0 +1,42 @@
+{
+  "id": "bare.supabase-users",
+  "name": "Bare Supabase Users",
+  "version": "0.1.0",
+  "description": "Workspace-scoped app user lookup plugin for linking Supabase app users to Bare CRM people.",
+  "capabilities": [
+    "plugin:commands",
+    "network:external",
+    "secrets:read",
+    "crm:read:record.search",
+    "crm:write:person.create",
+    "crm:write:record.update"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "person",
+        "key": "appUsers",
+        "label": "Linked app users",
+        "type": "json"
+      }
+    ],
+    "commands": [
+      {
+        "id": "supabase-users.find_by_email",
+        "name": "Find Supabase app user by email",
+        "requires": ["network:external", "secrets:read"]
+      },
+      {
+        "id": "supabase-users.link_person_by_email",
+        "name": "Link Supabase app user to CRM person by email",
+        "requires": [
+          "network:external",
+          "secrets:read",
+          "crm:read:record.search",
+          "crm:write:person.create",
+          "crm:write:record.update"
+        ]
+      }
+    ]
+  }
+}

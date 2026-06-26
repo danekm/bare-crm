@@ -63,7 +63,7 @@ current record later will match the event snapshot.
 
 - `id`: immutable event ID.
 - `writeId`: unique ID for one Write API attempt that committed.
-- `idempotencyKey`: caller-provided retry key scoped by workspace and write name.
+- `idempotencyKey`: caller-provided idempotency key scoped by workspace and write name.
 - `causationId`: the event, write, external message, or job that directly caused this write.
 - `correlationId`: stable trace ID across a larger flow.
 - `actor*`: who or what requested the write.

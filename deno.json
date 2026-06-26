@@ -1,17 +1,49 @@
 {
   "name": "@bare-crm/kernel",
   "version": "0.1.0",
+  "license": "MIT",
+  "description": "A small CRM kernel with Write API, Read API, Event Log, storage adapters, and a boring operator CLI.",
   "exports": {
     ".": "./src/index.ts",
+    "./admin": "./src/admin.ts",
+    "./cli": "./src/cli.ts",
+    "./compact-read": "./src/adapters/compact-read/mod.ts",
+    "./extensions": "./src/extensions.ts",
     "./sqlite": "./src/sqlite.ts",
-    "./postgres": "./src/postgres.ts"
+    "./postgres": "./src/postgres.ts",
+    "./plugins/gmail": "./src/adapters/gmail/mod.ts",
+    "./plugins/google-tasks": "./src/adapters/google-tasks/mod.ts",
+    "./plugins/granola": "./src/adapters/granola/mod.ts",
+    "./plugins/instagram": "./src/adapters/instagram/mod.ts",
+    "./plugins/reddit": "./src/adapters/reddit/mod.ts",
+    "./plugins/followups": "./src/adapters/followups/mod.ts",
+    "./plugins/supabase-users": "./src/adapters/supabase-users/mod.ts"
+  },
+  "publish": {
+    "exclude": [
+      "tests/",
+      "examples/labs/",
+      ".agents/",
+      ".codex/"
+    ]
   },
   "tasks": {
-    "check": "deno check src/index.ts src/sqlite.ts src/postgres.ts tests/kernel.test.ts tests/storage.test.ts tests/import_export.test.ts tests/plugins.test.ts tests/mcp.test.ts tests/gmail_plugin.test.ts tests/hard_rules.test.ts tests/plugin_development_docs.test.ts tests/fake_postgres.ts",
+    "check": "deno check src/index.ts src/admin.ts src/cli.ts src/commands.ts src/dashboard.ts src/read_compact.ts src/sqlite.ts src/postgres.ts src/extensions.ts src/validation.ts src/adapters/compact-read/mod.ts src/adapters/mcp/mod.ts src/adapters/cli/mod.ts src/adapters/gmail/mod.ts src/adapters/gmail/addon.ts src/adapters/gmail/gmail_api.ts src/adapters/gmail/google_addon.ts src/adapters/gmail/review.ts src/adapters/gmail/runner.ts src/adapters/gmail/state.ts src/adapters/gmail/sync.ts src/adapters/followups/mod.ts src/adapters/google-tasks/mod.ts src/adapters/google-tasks/api.ts src/adapters/google-tasks/mapper.ts src/adapters/google-tasks/runner.ts src/adapters/google-tasks/state.ts src/adapters/granola/mod.ts src/adapters/granola/api.ts src/adapters/granola/mapper.ts src/adapters/granola/runner.ts src/adapters/granola/state.ts src/adapters/instagram/mod.ts src/adapters/instagram/api.ts src/adapters/instagram/mapper.ts src/adapters/instagram/runner.ts src/adapters/instagram/state.ts src/adapters/reddit/mod.ts src/adapters/reddit/api.ts src/adapters/reddit/mapper.ts src/adapters/reddit/runner.ts src/adapters/reddit/state.ts src/adapters/supabase-users/mod.ts src/adapters/supabase-users/runner.ts plugins/bare-gmail/mod.ts plugins/bare-google-tasks/mod.ts plugins/bare-granola/mod.ts plugins/bare-instagram/mod.ts plugins/bare-reddit/mod.ts plugins/bare-supabase-users/mod.ts tools/generate_plugin_safety_docs.ts tools/generate_docs_site.ts tests/kernel.test.ts tests/read_compact.test.ts tests/storage.test.ts tests/import_export.test.ts tests/plugins.test.ts tests/commands.test.ts tests/mcp.test.ts tests/admin.test.ts tests/cli.test.ts tests/dashboard.test.ts tests/migrations.test.ts tests/gmail_plugin.test.ts tests/bare_gmail_addon.test.ts tests/bare_gmail_api.test.ts tests/bare_gmail_google_addon.test.ts tests/bare_gmail_plugin.test.ts tests/bare_gmail_review.test.ts tests/bare_gmail_state.test.ts tests/bare_gmail_sync.test.ts tests/bare_followups_plugin.test.ts tests/bare_google_tasks_plugin.test.ts tests/bare_granola_plugin.test.ts tests/bare_instagram_plugin.test.ts tests/bare_reddit_plugin.test.ts tests/supabase_users_plugin.test.ts tests/generated_docs.test.ts tests/docs_site.test.ts tests/hard_rules.test.ts tests/plugin_development_docs.test.ts tests/plugin_data_safety_docs.test.ts tests/plugin_data_safety_runtime.test.ts tests/privacy_safety.test.ts tests/extensions.test.ts tests/fake_postgres.ts",
+    "docs:safety": "deno run --allow-write tools/generate_plugin_safety_docs.ts",
+    "docs:site": "deno run --allow-write tools/generate_plugin_safety_docs.ts && deno run --allow-read --allow-write tools/generate_docs_site.ts",
+    "docs:check": "deno run --allow-read tools/generate_docs_site.ts --check",
+    "crm": "deno run --allow-read --allow-write --allow-env --allow-ffi src/cli.ts",
+    "dashboard": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi src/dashboard.ts",
+    "install:cli:local": "deno install -g --allow-read --allow-write --allow-env --allow-ffi -n crm src/cli.ts",
+    "publish:dry-run": "deno publish --dry-run --allow-dirty",
     "test": "deno test --allow-read --allow-write --allow-env --allow-ffi --allow-net=github.com,release-assets.githubusercontent.com",
     "fmt": "deno fmt"
   },
   "fmt": {
+    "exclude": [
+      "docs-site/",
+      "docs/generated/"
+    ],
     "lineWidth": 100,
     "semiColons": false,
     "singleQuote": false

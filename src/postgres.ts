@@ -38,55 +38,86 @@ export type PostgresStorage = StorageApi & {
   close(): Promise<void>
 }
 
-const schemaStatements = [
-  `
-    create table if not exists bare_crm_records (
-      workspace_id text not null,
-      type text not null,
-      id text not null,
-      version integer not null,
-      updated_at timestamptz not null,
-      archived_at timestamptz,
-      owner_id text,
-      source text not null,
-      text_index text not null,
-      record_json jsonb not null,
-      primary key (workspace_id, type, id)
-    )
-  `,
-  "create index if not exists bare_crm_records_workspace_type_idx on bare_crm_records(workspace_id, type)",
-  "create index if not exists bare_crm_records_workspace_updated_idx on bare_crm_records(workspace_id, updated_at desc)",
-  "create index if not exists bare_crm_records_workspace_archived_idx on bare_crm_records(workspace_id, archived_at)",
-  "create index if not exists bare_crm_records_workspace_owner_idx on bare_crm_records(workspace_id, owner_id)",
-  "create index if not exists bare_crm_records_workspace_source_idx on bare_crm_records(workspace_id, source)",
-  `
-    create table if not exists bare_crm_events (
-      workspace_id text not null,
-      id text primary key,
-      name text not null,
-      write_id text not null,
-      record_type text not null,
-      record_id text not null,
-      source text not null,
-      actor_id text,
-      correlation_id text,
-      causation_id text,
-      idempotency_key text,
-      occurred_at timestamptz not null,
-      event_json jsonb not null
-    )
-  `,
-  "create index if not exists bare_crm_events_workspace_occurred_idx on bare_crm_events(workspace_id, occurred_at desc)",
-  "create index if not exists bare_crm_events_workspace_name_idx on bare_crm_events(workspace_id, name)",
-  "create index if not exists bare_crm_events_workspace_record_idx on bare_crm_events(workspace_id, record_type, record_id)",
-  "create index if not exists bare_crm_events_workspace_correlation_idx on bare_crm_events(workspace_id, correlation_id)",
-  `
-    create table if not exists bare_crm_idempotency (
-      key text primary key,
-      result_json jsonb not null
-    )
-  `,
-]
+export type PostgresMigration = {
+  version: string
+  name: string
+  statements: string[]
+}
+
+export type PostgresMigrationStatus = {
+  adapter: "postgres"
+  currentVersion: string | null
+  applied: string[]
+  pending: Array<Pick<PostgresMigration, "version" | "name">>
+}
+
+export type PostgresMigrationResult = PostgresMigrationStatus & {
+  appliedNow: Array<Pick<PostgresMigration, "version" | "name">>
+  dryRun: boolean
+}
+
+const postgresMigrations: PostgresMigration[] = [{
+  version: "001",
+  name: "initial_schema",
+  statements: [
+    `
+      create table if not exists bare_crm_records (
+        workspace_id text not null,
+        type text not null,
+        id text not null,
+        version integer not null,
+        updated_at timestamptz not null,
+        archived_at timestamptz,
+        owner_id text,
+        source text not null,
+        text_index text not null,
+        record_json jsonb not null,
+        primary key (workspace_id, type, id)
+      )
+    `,
+    "create index if not exists bare_crm_records_workspace_type_idx on bare_crm_records(workspace_id, type)",
+    "create index if not exists bare_crm_records_workspace_updated_idx on bare_crm_records(workspace_id, updated_at desc)",
+    "create index if not exists bare_crm_records_workspace_archived_idx on bare_crm_records(workspace_id, archived_at)",
+    "create index if not exists bare_crm_records_workspace_owner_idx on bare_crm_records(workspace_id, owner_id)",
+    "create index if not exists bare_crm_records_workspace_source_idx on bare_crm_records(workspace_id, source)",
+    `
+      create table if not exists bare_crm_events (
+        workspace_id text not null,
+        id text primary key,
+        name text not null,
+        write_id text not null,
+        record_type text not null,
+        record_id text not null,
+        source text not null,
+        actor_id text,
+        correlation_id text,
+        causation_id text,
+        idempotency_key text,
+        occurred_at timestamptz not null,
+        event_json jsonb not null
+      )
+    `,
+    "create index if not exists bare_crm_events_workspace_occurred_idx on bare_crm_events(workspace_id, occurred_at desc)",
+    "create index if not exists bare_crm_events_workspace_name_idx on bare_crm_events(workspace_id, name)",
+    "create index if not exists bare_crm_events_workspace_record_idx on bare_crm_events(workspace_id, record_type, record_id)",
+    "create index if not exists bare_crm_events_workspace_correlation_idx on bare_crm_events(workspace_id, correlation_id)",
+    `
+      create table if not exists bare_crm_idempotency (
+        key text primary key,
+        result_json jsonb not null
+      )
+    `,
+    `
+      create table if not exists bare_crm_migrations (
+        version text primary key,
+        name text not null,
+        applied_at timestamptz not null
+      )
+    `,
+  ],
+}]
+
+const schemaStatements = postgresMigrations.flatMap((migration) => migration.statements)
 
 export function createPostgresStorage(options: PostgresStorageOptions): PostgresStorage {
   const connection = options.connection
@@ -130,10 +161,133 @@ export function getPostgresSchemaSql(): string[] {
   return [...schemaStatements]
 }
 
+export function getPostgresMigrations(): PostgresMigration[] {
+  return postgresMigrations.map((migration) => ({
+    ...migration,
+    statements: [...migration.statements],
+  }))
+}
+
 export async function installPostgresSchema(client: PostgresExecutor): Promise<void> {
-  for (const statement of schemaStatements) {
-    await execute(client, statement)
+  await migratePostgresClient(client)
+}
+
+export async function getPostgresMigrationStatus(
+  connection: PostgresConnection | PostgresPool,
+): Promise<PostgresMigrationStatus> {
+  const client = await acquireConnection(connection)
+  try {
+    return await postgresMigrationStatus(client)
+  } finally {
+    await releaseConnection(client, connection)
   }
+}
+
+export async function migratePostgresDatabase(
+  connection: PostgresConnection | PostgresPool,
+  options: { dryRun?: boolean; now?: () => Date } = {},
+): Promise<PostgresMigrationResult> {
+  const client = await acquireConnection(connection)
+  try {
+    if (options.dryRun) {
+      const status = await postgresMigrationStatus(client)
+      return { ...status, appliedNow: [], dryRun: true }
+    }
+
+    const appliedNow = await migratePostgresClient(client, options.now)
+    const status = await postgresMigrationStatus(client)
+    return { ...status, appliedNow, dryRun: false }
+  } finally {
+    await releaseConnection(client, connection)
+  }
+}
+
+async function migratePostgresClient(
+  client: PostgresExecutor,
+  now: () => Date = () => new Date(),
+): Promise<Array<Pick<PostgresMigration, "version" | "name">>> {
+  await execute(client, "begin")
+  const appliedNow: Array<Pick<PostgresMigration, "version" | "name">> = []
+
+  try {
+    await installPostgresMigrationLedger(client)
+    const applied = new Set(await readAppliedPostgresMigrationVersions(client))
+
+    for (const migration of postgresMigrations) {
+      if (applied.has(migration.version)) continue
+
+      for (const statement of migration.statements) {
+        await execute(client, statement)
+      }
+      await execute(
+        client,
+        `
+          insert into bare_crm_migrations (version, name, applied_at)
+          values ($1, $2, $3)
+        `,
+        [migration.version, migration.name, now().toISOString()],
+      )
+      appliedNow.push({ version: migration.version, name: migration.name })
+    }
+
+    await execute(client, "commit")
+    return appliedNow
+  } catch (error) {
+    await execute(client, "rollback")
+    throw error
+  }
+}
+
+async function installPostgresMigrationLedger(client: PostgresExecutor): Promise<void> {
+  await execute(
+    client,
+    `
+      create table if not exists bare_crm_migrations (
+        version text primary key,
+        name text not null,
+        applied_at timestamptz not null
+      )
+    `,
+  )
+}
+
+async function postgresMigrationStatus(
+  client: PostgresExecutor,
+): Promise<PostgresMigrationStatus> {
+  const applied = await postgresMigrationLedgerExists(client)
+    ? await readAppliedPostgresMigrationVersions(client)
+    : []
+  const appliedSet = new Set(applied)
+  const pending = postgresMigrations
+    .filter((migration) => !appliedSet.has(migration.version))
+    .map(({ version, name }) => ({ version, name }))
+
+  return {
+    adapter: "postgres",
+    currentVersion: applied.at(-1) ?? null,
+    applied,
+    pending,
+  }
+}
+
+async function postgresMigrationLedgerExists(client: PostgresExecutor): Promise<boolean> {
+  const rows = await queryRows(
+    client,
+    "select to_regclass('bare_crm_migrations') as migration_table",
+  )
+  return Boolean(rows[0]?.migration_table)
+}
+
+async function readAppliedPostgresMigrationVersions(client: PostgresExecutor): Promise<string[]> {
+  const rows = await queryRows(
+    client,
+    `
+      select version
+      from bare_crm_migrations
+      order by version asc
+    `,
+  )
+  return rows.map((row) => String(row.version))
 }
 
 function createTx(client: PostgresExecutor): StorageTx {

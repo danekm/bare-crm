@@ -33,6 +33,23 @@ import { createSqliteMemoryStorage } from "@bare-crm/kernel/sqlite"
 const storage = createSqliteMemoryStorage()
 ```
 
+SQLite migrations can be checked or applied through the CLI:
+
+```sh
+crm db status sqlite ./bare-crm.db
+crm db migrate sqlite ./bare-crm.db
+crm db migrate sqlite ./bare-crm.db --dry-run
+```
+
+Or through adapter helpers:
+
+```ts
+import { getSqliteMigrationStatus, migrateSqliteDatabase } from "@bare-crm/kernel/sqlite"
+
+const status = getSqliteMigrationStatus("./bare-crm.db")
+const result = migrateSqliteDatabase("./bare-crm.db")
+```
+
 The adapter stores canonical records and events as JSON, while keeping stable fields in columns for
 indexes:
 
@@ -45,6 +62,10 @@ indexes:
 - `owner_id`
 - `source`
 
+SQLite also owns one migration ledger table:
+
+- `bare_crm_migrations`
+
 This keeps the first adapter small and flexible without forcing the kernel to know about SQL shape.
 The schema can add generated columns, FTS tables, or materialized projections later without changing
 the Write API, Read API, or Storage API.
@@ -55,11 +76,12 @@ the Write API, Read API, or Storage API.
 - optimistic writes use the shared `expectedVersion` contract
 - events and idempotency results are persisted in the same transaction as records
 - event audit fields are indexed separately from the canonical event JSON
+- schema migrations are linear and recorded in `bare_crm_migrations`
 - the adapter runs through the shared Storage API conformance test
 
 ## Non-Goals
 
 - no CRM-specific SQL tables per entity yet
 - no full-text search table yet
-- no migrations framework yet
+- no general-purpose migration framework or plugin-owned kernel migrations
 - no policy or workflow logic inside storage

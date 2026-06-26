@@ -1,0 +1,149 @@
+# Publishing
+
+Bare CRM publishes from GitHub to JSR.
+
+The GitHub repository is the source of truth. Git tags create releases. JSR is the package registry
+for the Deno/TypeScript package.
+
+## Published Package
+
+Package name:
+
+```txt
+jsr:@bare-crm/kernel
+```
+
+Current package exports:
+
+```txt
+@bare-crm/kernel
+@bare-crm/kernel/admin
+@bare-crm/kernel/cli
+@bare-crm/kernel/extensions
+@bare-crm/kernel/sqlite
+@bare-crm/kernel/postgres
+@bare-crm/kernel/plugins/gmail
+@bare-crm/kernel/plugins/supabase-users
+```
+
+## GitHub Workflow
+
+Publishing is handled by `.github/workflows/publish.yml`.
+
+The workflow runs when a `v*` tag is pushed:
+
+```txt
+v0.1.0
+v0.1.1
+v0.2.0
+```
+
+The workflow runs:
+
+```sh
+deno fmt --check
+deno task check
+deno task test
+deno publish
+```
+
+## Docs Workflow
+
+The GitHub Pages docs site is handled by `.github/workflows/docs.yml`.
+
+The workflow runs on pushes to `main` and manual dispatch:
+
+```sh
+deno task check
+deno task test
+deno task docs:site
+npm ci
+npm run docs:build
+```
+
+`docs-site/` is generated from `README.md` and `docs/`. Run `deno task docs:check` locally or in CI
+to detect drift. The deploy workflow regenerates before building, so GitHub Pages always receives
+fresh site content from the canonical docs.
+
+## One-Time JSR Setup
+
+Before the first release:
+
+1. Create or claim the JSR scope `@bare-crm`.
+2. Create the JSR package `@bare-crm/kernel`.
+3. Link the JSR package to the GitHub repository `danekm/bare-crm`.
+4. Enable GitHub Actions publishing through OIDC.
+5. Confirm the publish workflow has:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+```
+
+No registry token should be committed to the repository.
+
+## Release Commands
+
+From a clean main branch:
+
+```sh
+git switch main
+git pull --ff-only
+deno fmt
+deno task check
+deno task test
+deno task publish:dry-run
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The tag push triggers the publish workflow. If the workflow succeeds, JSR receives
+`@bare-crm/kernel@0.1.0`.
+
+## GitHub Release
+
+After the publish workflow passes, create a GitHub Release for the same tag.
+
+Release notes should include:
+
+- package: `jsr:@bare-crm/kernel`
+- install: `deno add jsr:@bare-crm/kernel`
+- CLI install command
+- exported surfaces
+- notable plugin exports
+- safety docs link: `docs/plugin-data-safety.md`
+- generated safety coverage link: `docs/generated/plugin-safety-coverage.md`
+
+## Pre-Publish Gate
+
+Do not tag a release unless these pass:
+
+```sh
+deno fmt
+deno task check
+deno task test
+deno task publish:dry-run
+```
+
+The dry-run must end with:
+
+```txt
+Success Dry run complete
+```
+
+## Versioning
+
+Until the public API settles, use small `0.x` versions.
+
+Suggested first tag:
+
+```txt
+v0.1.0
+```
+
+Breaking public API changes before stability should bump the minor version:
+
+```txt
+v0.2.0
+```

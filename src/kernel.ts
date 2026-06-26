@@ -19,6 +19,7 @@ import type {
   WriteOptions,
   WriteResultByName,
 } from "./types.ts"
+import { validateWriteInput, WriteValidationError } from "./validation.ts"
 
 export class CrmKernelError extends Error {
   constructor(
@@ -78,6 +79,14 @@ export function createCrmKernel(
       context: writeOptions?.context,
       enforceCapabilities,
     })
+    try {
+      validateWriteInput(name, input)
+    } catch (error) {
+      if (error instanceof WriteValidationError) {
+        throw new CrmKernelError(error.code, error.message, error.field)
+      }
+      throw error
+    }
 
     const idempotencyKey = writeOptions?.idempotencyKey
       ? `${workspaceId}:${name}:${writeOptions.idempotencyKey}`
@@ -159,6 +168,11 @@ async function applyWrite<W extends WriteName>(
       return createRecord("company", input as WriteInputByName["company.create"], timestamp, id)
     case "deal.create":
       return createRecord("deal", input as WriteInputByName["deal.create"], timestamp, id)
+    case "collection.create": {
+      const collectionInput = input as WriteInputByName["collection.create"]
+      await assertCollectionRefsExist(tx, collectionInput.workspaceId, collectionInput)
+      return createRecord("collection", collectionInput, timestamp, id)
+    }
     case "activity.create":
       return createRecord("activity", input as WriteInputByName["activity.create"], timestamp, id)
     case "note.create":
@@ -176,7 +190,7 @@ async function applyWrite<W extends WriteName>(
     case "record.update": {
       const updateInput = input as WriteInputByName["record.update"]
       const current = await getRequired(tx, updateInput.workspaceId, updateInput.ref)
-      return compactRecord({
+      const next = compactRecord({
         ...current,
         ...updateInput.patch,
         id: current.id,
@@ -186,6 +200,10 @@ async function applyWrite<W extends WriteName>(
         updatedAt: timestamp,
         version: current.version + 1,
       } as AnyRecord)
+      if (next.type === "collection") {
+        await assertCollectionRefsExist(tx, updateInput.workspaceId, next)
+      }
+      return next
     }
     case "record.archive": {
       const archiveInput = input as WriteInputByName["record.archive"]
@@ -265,13 +283,24 @@ async function readTimeline(
   tx: StorageTx,
   input: ReadInputByName["timeline.list"],
 ): Promise<AnyRecord[]> {
+  const limit = input.limit ?? 100
+  const target = await tx.get(input)
   const records = await tx.search({
     workspaceId: input.workspaceId,
     includeArchived: input.includeArchived,
-    limit: input.limit ?? 100,
+    limit: Number.MAX_SAFE_INTEGER,
   })
+  const collectionMembers = target?.type === "collection"
+    ? await getRecordsByRefs(tx, input.workspaceId, target.related, input.includeArchived)
+    : []
 
-  return records.filter((record) => isRelatedTo(record, input))
+  return uniqueRecords([
+    ...(target && shouldIncludeRecord(target, input.includeArchived) ? [target] : []),
+    ...collectionMembers,
+    ...records.filter((record) =>
+      isRelatedTo(record, input) || isContainedInTargetCollection(record, target)
+    ),
+  ]).sort(sortTimelineRecord).slice(0, limit)
 }
 
 async function readRelations(
@@ -297,6 +326,31 @@ async function assertRefExists(
 ): Promise<void> {
   const record = await tx.get({ workspaceId, ...ref })
   if (!record) throw new CrmNotFoundError(ref)
+}
+
+async function assertCollectionRefsExist(
+  tx: StorageTx,
+  workspaceId: string,
+  input: { related?: EntityRef[]; outcome?: { related?: EntityRef[] } },
+): Promise<void> {
+  const refs = [...(input.related ?? []), ...(input.outcome?.related ?? [])]
+  for (const ref of refs) {
+    await assertRefExists(tx, workspaceId, ref)
+  }
+}
+
+async function getRecordsByRefs(
+  tx: StorageTx,
+  workspaceId: string,
+  refs: EntityRef[] | undefined,
+  includeArchived?: boolean,
+): Promise<AnyRecord[]> {
+  const records: AnyRecord[] = []
+  for (const ref of refs ?? []) {
+    const record = await tx.get({ workspaceId, ...ref })
+    if (record && shouldIncludeRecord(record, includeArchived)) records.push(record)
+  }
+  return records
 }
 
 async function getRequired(
@@ -429,6 +483,29 @@ function isRelatedTo(record: AnyRecord, ref: EntityRef): boolean {
   }
 
   return [...maybeRelated, ...maybeParticipants].some((candidate) => sameRef(candidate, ref))
+}
+
+function isContainedInTargetCollection(record: AnyRecord, target: AnyRecord | null): boolean {
+  return target?.type === "collection" &&
+    Boolean(target.related?.some((candidate) => sameRef(candidate, record)))
+}
+
+function shouldIncludeRecord(record: AnyRecord, includeArchived?: boolean): boolean {
+  return Boolean(includeArchived || !record.archivedAt)
+}
+
+function uniqueRecords(records: AnyRecord[]): AnyRecord[] {
+  const seen = new Set<string>()
+  return records.filter((record) => {
+    const key = `${record.workspaceId}:${record.type}:${record.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function sortTimelineRecord(a: AnyRecord, b: AnyRecord): number {
+  return b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)
 }
 
 function sameRef(a: EntityRef, b: EntityRef): boolean {

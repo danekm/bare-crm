@@ -1,0 +1,73 @@
+{
+  "id": "bare.instagram",
+  "name": "Bare Instagram Threads",
+  "version": "0.1.0",
+  "description": "Workspace-scoped Instagram adapter that follows selected owned comments, mentions, and DM threads without turning Bare CRM into a social inbox.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:collection.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "plugin:commands",
+    "plugin:profiles",
+    "plugin:sync",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "activity",
+        "key": "instagram",
+        "label": "Instagram reply provenance",
+        "type": "json"
+      },
+      {
+        "entity": "task",
+        "key": "instagram",
+        "label": "Instagram review provenance",
+        "type": "json"
+      },
+      {
+        "entity": "collection",
+        "key": "instagram",
+        "label": "Instagram thread provenance",
+        "type": "json"
+      }
+    ],
+    "collectionProfiles": [
+      {
+        "id": "instagram.thread",
+        "name": "Instagram thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["responded", "no_action", "archived"],
+        "optionalRelated": ["person", "company", "deal", "activity", "note", "task", "file"]
+      }
+    ],
+    "commands": [
+      {
+        "id": "instagram.watch_thread",
+        "name": "Watch Instagram thread",
+        "requires": ["plugin:sync"]
+      },
+      {
+        "id": "instagram.sync_threads",
+        "name": "Sync watched Instagram threads",
+        "requires": ["network:external", "secrets:read", "crm:write:activity.create"]
+      },
+      {
+        "id": "instagram.create_review_task",
+        "name": "Create task for Instagram reply review",
+        "requires": ["crm:write:task.create"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "instagram.thread-sync",
+        "name": "Instagram watched thread sync",
+        "system": "instagram",
+        "direction": "import"
+      }
+    ]
+  }
+}

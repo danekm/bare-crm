@@ -9,7 +9,7 @@ The kernel owns durable business memory. Channels provide source material.
 Email, messaging, support, meetings
   -> channel plugins
   -> kernel commands
-  -> activities, notes, tasks, files, relations, events
+  -> collections, activities, notes, tasks, files, relations, events
 ```
 
 ## Core Boundary
@@ -19,6 +19,7 @@ The kernel should keep a small set of stable records:
 - `Person`
 - `Company`
 - `Deal`
+- `Collection`
 - `Activity`
 - `Note`
 - `Task`
@@ -31,9 +32,9 @@ kernel entities by default.
 
 They are external sources. The kernel stores what they mean for the customer relationship.
 
-## Activity Versus Source
+## Collection And Activity Versus Source
 
-An external source is evidence. An activity is CRM memory.
+An external source is evidence. A collection is CRM context. An activity is CRM memory.
 
 ```txt
 External source:
@@ -41,14 +42,21 @@ External source:
 
 Activity:
   A normalized record that says a meaningful interaction happened.
+
+Collection:
+  A durable group of related CRM records around one business context.
 ```
 
 Examples:
 
-- a 17-message Outlook thread can produce one activity: "Renewal pricing discussion with Acme"
-- a WhatsApp exchange can produce one activity: "Customer asked for delivery status"
-- a Reddit complaint can produce one activity and one task: "Investigate public complaint"
-- a meeting recording can produce one activity, one transcript file, and follow-up tasks
+- a 17-message Outlook thread can produce one collection plus email activities: "Renewal pricing
+  discussion with Acme"
+- a WhatsApp exchange can produce one collection and one activity: "Customer asked for delivery
+  status"
+- a Reddit complaint can produce one collection, one activity, and one task: "Investigate public
+  complaint"
+- a meeting series can produce one collection, meeting activities, transcript files, and follow-up
+  tasks
 
 The kernel does not need to parse every source format. It needs to preserve references, provenance,
 relationships, and business outcomes.
@@ -72,6 +80,7 @@ Channel plugins own the messy parts:
 Plugins write back through kernel commands:
 
 - `crm.write("activity.create", input)`
+- `crm.write("collection.create", input)`
 - `crm.write("note.create", input)`
 - `crm.write("task.create", input)`
 - `crm.write("file.create", input)`
@@ -86,6 +95,7 @@ commands rather than bypassing the kernel.
 The kernel should provide the primitives that make channel plugins safe and durable:
 
 - stable records and typed references
+- collections for durable groupings across channel events
 - `source` metadata
 - `externalRefs` for provider ids and URLs
 - `custom` data for plugin-owned annotations
@@ -152,13 +162,14 @@ The kernel should not model each channel separately. Each plugin should normaliz
 interactions into the same CRM primitives:
 
 - `Activity` for the interaction
+- `Collection` for the larger conversation, issue, case, or workstream
 - `Task` for required action
 - `Note` for durable internal context
-- `Relation` for links between people, companies, deals, issues, and activities
+- `Relation` for links between people, companies, deals, collections, issues, and activities
 - `File` for screenshots, attachments, exports, or transcripts
 
-This lets the timeline for a person, company, or deal show one coherent history even when the work
-happened across many channels.
+This lets the timeline for a person, company, deal, or collection show one coherent history even
+when the work happened across many channels.
 
 ## Meeting Recordings
 
@@ -167,14 +178,15 @@ Meeting tools should also be plugins.
 A meeting plugin should:
 
 - create an activity for the meeting
+- add the meeting to a collection when it belongs to a larger workstream
 - attach the recording or transcript as a file when allowed
 - summarize decisions, objections, risks, and follow-ups
 - create tasks for next steps
 - relate the meeting to people, companies, and deals
 - preserve provider refs back to the recording system
 
-The recording file and transcript are source artifacts. The CRM memory is the meeting activity,
-summary, relations, and follow-up tasks.
+The recording file and transcript are source artifacts. The CRM memory is the collection, meeting
+activity, summary, relations, and follow-up tasks.
 
 ## Why This Is Not A Strict CRM
 
@@ -198,6 +210,7 @@ Do not add a kernel entity for every new channel.
 First ask whether the channel can be represented as:
 
 - an activity
+- a collection
 - a note
 - a task
 - a file

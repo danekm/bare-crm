@@ -19,17 +19,43 @@ Storage API implementations
   - Postgres / Supabase
 
 Optional layers outside core
+  - adapter host / extension host
+  - adapters
   - policies
   - workflows
   - background jobs
   - plugins
-  - MCP
-  - CLI / HTTP API
   - UI
   - Noros / agents
 ```
 
 The kernel has no embedded model, no agent brain, no UI, and no workflow runner.
+
+## Repository Map
+
+Agent-facing and integration-facing code lives under `src/adapters/`:
+
+```txt
+src/adapters/
+  compact-read/     # token budgets, cursors, summaries
+  mcp/              # MCP tool/resource mapping
+  cli/              # command parser and command handlers
+  gmail/            # Gmail plugin adapter
+  google-tasks/     # Google Tasks execution-surface adapter
+  granola/          # Granola meeting-memory adapter
+  instagram/        # Instagram observe-only thread adapter
+  reddit/           # Reddit observe-only thread adapter
+  supabase-users/   # Supabase app-user lookup adapter
+```
+
+Compatibility entrypoints such as `src/cli.ts`, `src/mcp.ts`, `src/read_compact.ts`, and
+`plugins/bare-gmail/mod.ts` are thin shims. New implementation should go in `src/adapters/*`, not in
+those shims.
+
+The [Extension Host](extension-host.md) is the recommended outer boundary for production plugin
+systems. It owns plugin lifecycle, workspace-scoped extension state, schema/profile contributions,
+event subscriptions, sync jobs, secrets access, and UI slot registration. It still uses the kernel
+only through the Read API, Write API, and Event Log.
 
 ## Core Responsibilities
 
@@ -52,6 +78,7 @@ The Write API is the only official way to change CRM facts.
 
 ```ts
 await crm.write("person.create", input)
+await crm.write("collection.create", { workspaceId, title, kind, related })
 await crm.write("record.update", { workspaceId, ref, patch })
 await crm.write("relation.create", { workspaceId, from, to, kind })
 await crm.write("record.archive", { workspaceId, ref })
@@ -98,10 +125,12 @@ The same conformance tests should apply to every Storage API implementation.
 
 Optional layers may listen to events and call the Write API/Read API:
 
+- the Extension Host coordinates plugin lifecycle, capabilities, schema contributions, event
+  subscriptions, sync jobs, secrets, and UI slots
 - policies enforce business-specific pre-write rules
 - workflows react to committed events
 - background jobs run imports, syncs, retries, enrichment, and search maintenance
-- plugins package fields, policies, workflows, syncs, and UI slots
+- plugins package fields, collection profiles, policies, workflows, syncs, and UI slots
 - MCP exposes safe tools and resources to models and agents
 - Noros or other orchestrators can coordinate agentic work
 

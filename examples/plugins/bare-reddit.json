@@ -1,0 +1,35 @@
+{
+  "id": "bare.reddit",
+  "name": "Bare Reddit Threads",
+  "version": "0.1.0",
+  "description": "Reddit thread follower that captures selected submission and comment replies as CRM memory.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:collection.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "plugin:commands",
+    "plugin:profiles",
+    "plugin:sync",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "collectionProfiles": [
+      {
+        "id": "reddit.thread",
+        "name": "Reddit thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["responded", "no_action", "archived"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "reddit.thread-sync",
+        "name": "Reddit watched thread sync",
+        "system": "reddit",
+        "direction": "import"
+      }
+    ]
+  }
+}

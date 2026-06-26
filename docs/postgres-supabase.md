@@ -28,6 +28,18 @@ const storage = createPostgresStorage({
 const crm = createCrmKernel({ storage })
 ```
 
+Postgres migrations use the same client/pool surface:
+
+```ts
+import { getPostgresMigrationStatus, migratePostgresDatabase } from "@bare-crm/kernel/postgres"
+
+const status = await getPostgresMigrationStatus(postgresClientOrPool)
+const result = await migratePostgresDatabase(postgresClientOrPool)
+```
+
+The local CLI currently prints official Postgres schema SQL for review. A live Postgres CLI command
+should be added only when the package has a deliberate connection configuration story.
+
 The adapter accepts a small client/pool surface instead of owning a specific driver:
 
 ```ts
@@ -51,6 +63,7 @@ The adapter creates explicit tables:
 - `bare_crm_records`
 - `bare_crm_events`
 - `bare_crm_idempotency`
+- `bare_crm_migrations`
 
 Records and events are stored as canonical `jsonb`, while stable index columns stay relational:
 
@@ -86,6 +99,7 @@ review.
 - duplicate create IDs map to `StorageConflictError`
 - events and idempotency rows are written in the same transaction as records
 - event audit fields can be filtered without inspecting full event JSON
+- schema metadata is stored in the `bare_crm_migrations` ledger table
 - the adapter runs through the same kernel and Storage API behavior suites as memory and SQLite
 
 ## Supabase Notes

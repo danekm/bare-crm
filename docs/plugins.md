@@ -2,11 +2,13 @@
 
 Plugins are optional packages outside the core kernel.
 
-For a practical authoring walkthrough, see [Plugin Development](plugin-development.md).
+For a practical authoring walkthrough, see [Plugin Development](plugin-development.md). For the
+production runtime boundary, see [Extension Host](extension-host.md).
 
 They can contribute:
 
 - fields
+- collection profiles
 - policies
 - workflows
 - sync adapters
@@ -24,6 +26,7 @@ flowchart TB
   Manifest --> Extensions["registered extensions"]
 
   Extensions --> Fields["fields"]
+  Extensions --> CollectionProfiles["collection profiles"]
   Extensions --> Policies["optional policies"]
   Extensions --> Workflows["optional workflows"]
   Extensions --> Commands["commands"]
@@ -42,6 +45,15 @@ flowchart TB
 
 Plugins may extend behavior, but they do not own kernel invariants and they cannot monkey-patch the
 kernel.
+
+UI contributions are declarative metadata. A plugin can declare workbench surfaces such as
+`workspace.nav`, `workspace.route`, `record.header`, `record.sidebar`, `command.palette`,
+`command.composer`, and `agent.responseCard`, but the kernel never loads or executes frontend code.
+Workbench hosts render approved first-party components from their own registries.
+
+In production, a plugin should be loaded by an Extension Host. The host is responsible for
+workspace-scoped installation, capability grants, lifecycle hooks, schema/profile contributions,
+event subscriptions, sync state, secret access, and optional sandboxing.
 
 ## Manifest
 
@@ -77,6 +89,7 @@ type PluginRuntimeCapability =
   | "plugin:commands"
   | "plugin:ui"
   | "plugin:sync"
+  | "plugin:profiles"
   | "network:external"
   | "secrets:read"
   | "files:read"
@@ -85,11 +98,16 @@ type PluginRuntimeCapability =
 
 Direct Storage API capability is forbidden. The validator rejects `storage:*`.
 
+For the stable public surface, keep plugin manifests small. `plugin:commands` is the first stable
+metadata capability. Fields, policies, workflows, UI slots, syncs, and profiles are experimental
+until the kernel API settles.
+
 ## Contributions
 
 ```ts
 type PluginContributions = {
   fields?: PluginFieldContribution[]
+  collectionProfiles?: PluginCollectionProfileContribution[]
   policies?: PluginPolicyContribution[]
   workflows?: PluginWorkflowContribution[]
   commands?: PluginCommandContribution[]
@@ -101,6 +119,12 @@ type PluginContributions = {
 Contribution entries are declarations. They do not execute inside the kernel. Optional plugin
 runtimes, CLIs, MCP servers, or apps can load manifests, request capabilities, and then call the
 Read API and Write API.
+
+The stable contribution family is `commands`. Other contribution families are available for
+experimentation but should not be treated as a long-term public contract yet.
+
+The recommended production runtime is an Extension Host. It may execute plugin hooks or route plugin
+commands, but durable CRM reads and writes still go through the kernel APIs.
 
 ## Execution Context
 

@@ -1,0 +1,108 @@
+# CLI
+
+Bare CRM can expose a small operator CLI named `crm`.
+
+The CLI is an admin and development surface over official kernel APIs and storage adapter helpers.
+It is not a second CRM product, a raw SQL shell, or a plugin runtime.
+
+Reusable admin logic lives in the [admin surface](admin-surface.md). The CLI is the terminal
+presentation for that logic.
+
+## Current Commands
+
+During local development, run commands through the Deno task:
+
+```sh
+deno task crm -- help
+deno task crm -- doctor
+deno task crm -- doctor --format json
+deno task crm -- db schema postgres
+deno task crm -- db status sqlite ./bare-crm.db
+deno task crm -- db migrate sqlite ./bare-crm.db
+deno task crm -- db migrate sqlite ./bare-crm.db --dry-run
+deno task crm -- plugins validate examples/plugins/bare-gmail.json
+```
+
+The intended installed command shape is:
+
+```sh
+crm doctor
+crm db schema postgres
+crm db status sqlite ./bare-crm.db
+crm db migrate sqlite ./bare-crm.db
+crm plugins validate examples/plugins/bare-gmail.json
+```
+
+Install the CLI after package publish:
+
+```sh
+deno install -g \
+  --allow-read --allow-write --allow-env --allow-ffi \
+  -n crm \
+  jsr:@bare-crm/kernel/cli
+```
+
+For the full package and local install paths, see [Install](install.md).
+
+## Command Contract
+
+`crm doctor`
+
+Runs privacy-preserving readiness checks. The first version reports CLI/package-level checks only
+and does not read CRM records or Event Log snapshots.
+
+`crm db schema postgres`
+
+Prints the official Postgres schema SQL from the storage adapter helper. This supports review and
+manual migration planning without inventing an alternate database shape.
+
+`crm db status sqlite <path>`
+
+Shows the applied and pending SQLite schema migrations. Status output uses only migration metadata,
+not CRM records or event snapshots.
+
+`crm db migrate sqlite <path>`
+
+Applies pending SQLite schema migrations in order and records successful migrations in the
+`bare_crm_migrations` ledger table. Failed migrations stop immediately and are not recorded as
+complete.
+
+`crm plugins validate <path>`
+
+Validates a plugin manifest and rejects forbidden capabilities such as direct `storage:*` access.
+
+The stable CLI does not start the dashboard, run workflows, call local HTTP routes, or act as a
+plugin runtime. Lab tools may exist as separate tasks, but `crm` should stay a boring local operator
+surface over package APIs.
+
+## Migration Shape
+
+`db migrate` is for applying versioned database schema changes to an existing CRM database. The
+initial migration shape is deliberately small:
+
+- one ledger table: `bare_crm_migrations`
+- one ordered migration list per official storage adapter
+- no plugin-owned kernel migrations
+- no arbitrary SQL command
+- no rollback command in the first version
+
+SQLite migrations are executable through the CLI because the SQLite adapter is bundled in this
+package. Postgres has the same adapter-level migration helper API, but live Postgres CLI migration
+should wait for a clear connection and driver story instead of smuggling one into the kernel
+package.
+
+## Privacy Boundary
+
+CLI diagnostics should be boring and local by default:
+
+- no external telemetry
+- no raw CRM data in health reports
+- redacted operator errors for common private-looking values
+- no plugin or connector storage access
+- explicit admin/operator execution
+- structured JSON output for dashboards or monitors
+
+Dashboards should consume summarized CLI output rather than copying Event Log snapshots into a
+second analytics store.
+
+See [Privacy Safety](privacy-safety.md) for the shared safe-output rule.
