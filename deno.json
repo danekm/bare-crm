@@ -40,6 +40,10 @@
     "fmt": "deno fmt"
   },
   "fmt": {
+    "exclude": [
+      "docs-site/",
+      "docs/generated/"
+    ],
     "lineWidth": 100,
     "semiColons": false,
     "singleQuote": false
