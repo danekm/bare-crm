@@ -3,6 +3,8 @@
 .env.*
 node_modules/
 dist/
+*.tsbuildinfo
+.npm-cache/
 coverage/
 .vscode/
 bare-crm.db

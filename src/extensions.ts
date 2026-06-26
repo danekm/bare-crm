@@ -19,6 +19,7 @@ import type {
   PluginCollectionProfileContribution,
   PluginManifest,
   PluginRuntimeCapability,
+  PluginUiSlotContribution,
 } from "./plugins.ts"
 import { validatePluginManifest } from "./plugins.ts"
 
@@ -95,6 +96,9 @@ export type ExtensionHost = {
   getPluginState(input: { workspaceId: string; pluginId: string }): ExtensionPluginState | null
   listPluginStates(input: { workspaceId: string }): ExtensionPluginState[]
   listCollectionProfiles(input: { workspaceId: string }): PluginCollectionProfileContribution[]
+  listUiSlots(
+    input: { workspaceId: string },
+  ): Array<PluginUiSlotContribution & { pluginId: string }>
   validateCollection(input: {
     workspaceId: string
     collection: Pick<Collection, "kind" | "status" | "related" | "outcome">
@@ -278,6 +282,23 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
         )
         .flatMap((state) => state.manifest.contributes.collectionProfiles ?? [])
         .map((profile) => ({ ...profile }))
+    },
+
+    listUiSlots(input) {
+      return [...plugins.values()]
+        .filter((state) =>
+          state.workspaceId === input.workspaceId &&
+          state.enabled &&
+          state.approvedCapabilities.includes("plugin:ui")
+        )
+        .flatMap((state) =>
+          (state.manifest.contributes.uiSlots ?? []).map((slot) => ({
+            ...slot,
+            pluginId: state.pluginId,
+            recordTypes: slot.recordTypes ? [...slot.recordTypes] : undefined,
+            requires: slot.requires ? [...slot.requires] : undefined,
+          }))
+        )
     },
 
     validateCollection(input) {
@@ -581,7 +602,11 @@ function cloneContributions(
       ...command,
       requires: [...command.requires],
     })),
-    uiSlots: contributions.uiSlots?.map((slot) => ({ ...slot })),
+    uiSlots: contributions.uiSlots?.map((slot) => ({
+      ...slot,
+      recordTypes: slot.recordTypes ? [...slot.recordTypes] : undefined,
+      requires: slot.requires ? [...slot.requires] : undefined,
+    })),
     syncs: contributions.syncs?.map((sync) => ({ ...sync })),
   }
 }

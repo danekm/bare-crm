@@ -1,0 +1,76 @@
+{
+  "id": "bare.granola",
+  "name": "Bare Granola Meetings",
+  "version": "0.1.0",
+  "description": "Workspace-scoped Granola adapter that turns meeting summaries into CRM activities, relations, and follow-up tasks without storing raw transcripts in kernel records.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:person.create",
+    "crm:write:company.create",
+    "crm:write:collection.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "crm:write:relation.create",
+    "plugin:commands",
+    "plugin:profiles",
+    "plugin:sync",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "activity",
+        "key": "granola",
+        "label": "Granola meeting provenance",
+        "type": "json"
+      },
+      {
+        "entity": "task",
+        "key": "granola",
+        "label": "Granola follow-up provenance",
+        "type": "json"
+      },
+      {
+        "entity": "collection",
+        "key": "granola",
+        "label": "Granola meeting series provenance",
+        "type": "json"
+      }
+    ],
+    "collectionProfiles": [
+      {
+        "id": "granola.meeting-series",
+        "name": "Granola meeting series",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["followed_up", "no_action", "archived"],
+        "optionalRelated": ["person", "company", "deal", "activity", "note", "task", "file"]
+      }
+    ],
+    "commands": [
+      {
+        "id": "granola.sync_notes",
+        "name": "Sync Granola meeting notes",
+        "requires": ["network:external", "secrets:read", "crm:write:activity.create"]
+      },
+      {
+        "id": "granola.save_meeting",
+        "name": "Save Granola meeting as CRM activity",
+        "requires": ["crm:write:activity.create"]
+      },
+      {
+        "id": "granola.create_follow_ups",
+        "name": "Create follow-up tasks from meeting notes",
+        "requires": ["crm:write:task.create"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "granola.note-sync",
+        "name": "Granola note sync",
+        "system": "granola",
+        "direction": "import"
+      }
+    ]
+  }
+}

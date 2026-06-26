@@ -1,0 +1,51 @@
+{
+  "id": "bare.google-tasks",
+  "name": "Bare Google Tasks",
+  "version": "0.1.0",
+  "description": "Bidirectional sync between selected Bare CRM tasks and a Google task list.",
+  "capabilities": [
+    "crm:read:record.get",
+    "crm:read:record.search",
+    "crm:read:event.list",
+    "crm:write:task.create",
+    "crm:write:record.update",
+    "plugin:commands",
+    "plugin:sync",
+    "plugin:workflows",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "task",
+        "key": "googleTasks",
+        "label": "Google Tasks sync state",
+        "type": "json"
+      }
+    ],
+    "commands": [
+      {
+        "id": "google_tasks.sync",
+        "name": "Sync Bare CRM tasks with Google Tasks",
+        "requires": ["network:external", "secrets:read", "crm:read:record.search"]
+      }
+    ],
+    "workflows": [
+      {
+        "id": "google-tasks.task-sync",
+        "name": "Sync CRM task changes to Google Tasks",
+        "listensTo": ["task.created", "task.updated", "task.archived"],
+        "writes": ["record.update"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "google-tasks.bidirectional-sync",
+        "name": "Google Tasks bidirectional sync",
+        "system": "google-tasks",
+        "direction": "bidirectional"
+      }
+    ]
+  }
+}

@@ -15,6 +15,20 @@ Support/Gmail plugin
       -> Kernel
 ```
 
+## Data Safety
+
+This plugin follows [Plugin Data Safety](../../docs/plugin-data-safety.md).
+
+- workspace scope: Supabase URL, service role key, table mapping, and app-user refs are configured
+  per workspace
+- minimization: only app user id, email, optional name, admin URL, and explicitly mapped safe traits
+  are copied into CRM
+- no raw payload storage: full Supabase rows, auth metadata, billing details, and session data stay
+  outside kernel records
+- secrets: `supabase_service_role_key` is read from the Extension Host secret store and never stored
+  in CRM records, Event Log payloads, plugin manifests, logs, or operational output
+- idempotency: app user external refs prevent duplicate CRM people
+
 ## Current Slice
 
 - validates and installs as a workspace-scoped plugin

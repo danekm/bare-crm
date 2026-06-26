@@ -15,7 +15,7 @@ import {
   createSupabaseAppUserDirectory,
   createSupabaseUsersPluginRunner,
   installBareSupabaseUsersPlugin,
-} from "../plugins/bare-supabase-users/mod.ts"
+} from "../src/adapters/supabase-users/mod.ts"
 
 const workspaceId = "workspace_1"
 

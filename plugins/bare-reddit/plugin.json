@@ -1,0 +1,73 @@
+{
+  "id": "bare.reddit",
+  "name": "Bare Reddit Threads",
+  "version": "0.1.0",
+  "description": "Workspace-scoped Reddit adapter that follows selected submissions or comments and records only meaningful thread activity in Bare CRM.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:collection.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "plugin:commands",
+    "plugin:profiles",
+    "plugin:sync",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "activity",
+        "key": "reddit",
+        "label": "Reddit reply provenance",
+        "type": "json"
+      },
+      {
+        "entity": "task",
+        "key": "reddit",
+        "label": "Reddit review provenance",
+        "type": "json"
+      },
+      {
+        "entity": "collection",
+        "key": "reddit",
+        "label": "Reddit thread provenance",
+        "type": "json"
+      }
+    ],
+    "collectionProfiles": [
+      {
+        "id": "reddit.thread",
+        "name": "Reddit thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["responded", "no_action", "archived"],
+        "optionalRelated": ["person", "company", "deal", "activity", "note", "task", "file"]
+      }
+    ],
+    "commands": [
+      {
+        "id": "reddit.watch_thread",
+        "name": "Watch Reddit thread",
+        "requires": ["plugin:sync"]
+      },
+      {
+        "id": "reddit.sync_threads",
+        "name": "Sync watched Reddit threads",
+        "requires": ["network:external", "secrets:read", "crm:write:activity.create"]
+      },
+      {
+        "id": "reddit.create_review_task",
+        "name": "Create task for Reddit reply review",
+        "requires": ["crm:write:task.create"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "reddit.thread-sync",
+        "name": "Reddit watched thread sync",
+        "system": "reddit",
+        "direction": "import"
+      }
+    ]
+  }
+}

@@ -236,6 +236,119 @@ for (const scenario of kernelScenarios) {
     })
   })
 
+  Deno.test(`${scenario.name}: Write API rejects nonconformant input before commit`, async () => {
+    await withKernel(scenario, async (crm) => {
+      await assertRejects(
+        () =>
+          crm.write("person.create", {
+            workspaceId: "workspace_1",
+            name: "Ada Lovelace",
+            rawPayload: { provider: "hubspot" },
+          } as never),
+        CrmKernelError,
+        "Unknown field",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("task.create", {
+            workspaceId: "workspace_1",
+            title: "Follow up",
+            status: "later",
+          } as never),
+        CrmKernelError,
+        "status must be one of",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("activity.create", {
+            workspaceId: "workspace_1",
+            kind: "message",
+            occurredAt: "2026-01-02T00:00:00.000Z",
+            direction: "sideways",
+          } as never),
+        CrmKernelError,
+        "direction must be one of",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("company.create", {
+            workspaceId: "workspace_1",
+            name: "Acme",
+            externalRefs: [{ system: "hubspot" }],
+          } as never),
+        CrmKernelError,
+        "externalRefs.0.id",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("note.create", {
+            workspaceId: "workspace_1",
+            body: "Missing related refs.",
+            related: [{ type: "widget", id: "widget_1" }],
+          } as never),
+        CrmKernelError,
+        "related.0.type",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("person.create", {
+            workspaceId: "workspace_1",
+            name: "Ada Lovelace",
+            custom: "raw custom blob",
+          } as never),
+        CrmKernelError,
+        "custom must be an object",
+      )
+
+      assertEquals(
+        await crm.read("record.search", { workspaceId: "workspace_1", includeArchived: true }),
+        [],
+      )
+    })
+  })
+
+  Deno.test(`${scenario.name}: record.update rejects identity and unknown patch fields`, async () => {
+    await withKernel(scenario, async (crm) => {
+      const person = await crm.write("person.create", {
+        workspaceId: "workspace_1",
+        id: "person_1",
+        name: "Ada Lovelace",
+      })
+
+      await assertRejects(
+        () =>
+          crm.write("record.update", {
+            workspaceId: "workspace_1",
+            ref: { type: "person", id: person.id },
+            patch: { id: "person_2" },
+          } as never),
+        CrmKernelError,
+        "cannot change id",
+      )
+
+      await assertRejects(
+        () =>
+          crm.write("record.update", {
+            workspaceId: "workspace_1",
+            ref: { type: "person", id: person.id },
+            patch: { rawPayload: { unsafe: true } },
+          } as never),
+        CrmKernelError,
+        "Unknown update patch field",
+      )
+
+      assertEquals(
+        await crm.read("record.get", { workspaceId: "workspace_1", type: "person", id: person.id }),
+        person,
+      )
+    })
+  })
+
   Deno.test(`${scenario.name}: relations require existing endpoints and can be listed`, async () => {
     await withKernel(scenario, async (crm) => {
       await assertRejects(() =>

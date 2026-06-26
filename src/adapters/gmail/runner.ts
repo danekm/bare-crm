@@ -6,7 +6,7 @@ import {
   createGmailFollowUpTaskInput,
   createGmailThreadCollectionInput,
   validatePluginManifest,
-} from "../../src/index.ts"
+} from "../../index.ts"
 import type {
   Activity,
   AnyRecord,
@@ -23,16 +23,22 @@ import type {
   PluginManifest,
   PluginRuntimeCapability,
   Task,
-} from "../../src/index.ts"
+} from "../../index.ts"
 
 export const BARE_GMAIL_PLUGIN_ID = "bare.gmail"
 
 export const BARE_GMAIL_REQUIRED_CAPABILITIES: PluginRuntimeCapability[] = [
   "plugin:profiles",
+  "plugin:commands",
+  "plugin:ui",
+  "plugin:sync",
   "crm:read:record.search",
+  "crm:write:person.create",
+  "crm:write:company.create",
   "crm:write:collection.create",
   "crm:write:activity.create",
   "crm:write:task.create",
+  "crm:write:relation.create",
 ]
 
 export const bareGmailPluginManifest: PluginManifest = validatePluginManifest(manifestJson)

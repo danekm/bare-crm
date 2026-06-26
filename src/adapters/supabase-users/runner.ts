@@ -1,5 +1,5 @@
 import manifestJson from "./plugin.json" with { type: "json" }
-import { validatePluginManifest } from "../../src/index.ts"
+import { validatePluginManifest } from "../../index.ts"
 import type {
   ExtensionHost,
   ExtensionPluginState,
@@ -7,7 +7,7 @@ import type {
   Person,
   PluginManifest,
   PluginRuntimeCapability,
-} from "../../src/index.ts"
+} from "../../index.ts"
 
 export const BARE_SUPABASE_USERS_PLUGIN_ID = "bare.supabase-users"
 

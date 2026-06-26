@@ -1,0 +1,54 @@
+{
+  "id": "bare.granola",
+  "name": "Bare Granola",
+  "version": "0.1.0",
+  "description": "Granola meeting-memory adapter that syncs useful summaries and action items into Bare CRM.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:person.create",
+    "crm:write:company.create",
+    "crm:write:collection.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "crm:write:relation.create",
+    "plugin:commands",
+    "plugin:profiles",
+    "plugin:sync",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "fields": [
+      {
+        "entity": "activity",
+        "key": "granola",
+        "label": "Granola provenance",
+        "type": "json"
+      }
+    ],
+    "collectionProfiles": [
+      {
+        "id": "granola.meeting-series",
+        "name": "Granola meeting series",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["followed_up", "no_action", "archived"],
+        "optionalRelated": ["person", "company", "deal", "activity", "note", "task", "file"]
+      }
+    ],
+    "commands": [
+      {
+        "id": "granola.sync_notes",
+        "name": "Sync Granola meeting notes",
+        "requires": ["network:external", "secrets:read", "crm:write:activity.create"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "granola.note-sync",
+        "name": "Granola note sync",
+        "system": "granola",
+        "direction": "import"
+      }
+    ]
+  }
+}

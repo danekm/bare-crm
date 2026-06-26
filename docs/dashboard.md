@@ -1,7 +1,7 @@
 # Dashboard
 
-Bare CRM includes an optional local dashboard for inspecting and creating records during development
-or simple self-hosted use.
+Bare CRM includes an optional lab dashboard for inspecting and creating records during development.
+It is not a stable package surface and should not define the public shape of the kernel.
 
 The dashboard is not part of the kernel. It is a thin HTTP and browser layer over the Read API and
 Write API:
@@ -22,12 +22,6 @@ It never reads SQLite or Postgres directly.
 deno task dashboard
 ```
 
-Or through the CLI:
-
-```sh
-deno task crm -- dashboard --db ./bare-crm.db
-```
-
 Options:
 
 - `--db <path>`: SQLite database path, default `./bare-crm.db`
@@ -44,15 +38,42 @@ The direct task also reads:
 
 The first dashboard is intentionally small:
 
+- platform overview for tickets, workflows, dependencies, and QA
+- platform lanes backed by `collection` records with stable `platform.*` kinds
 - record type rail for people, companies, deals, tasks, notes, activities, and all records
 - search box backed by `record.search`
 - compact record list
 - selected record detail panel
 - timeline and relation summaries
-- create forms for person, company, deal, task, note, and activity
+- create forms for platform items, person, company, deal, task, note, and activity
 - archive action
 
-It is meant to prove the kernel-to-UI loop, not to become a full CRM product.
+It is meant to prove the kernel-to-UI loop, not to become a full CRM product. Keep production admin
+dashboards and hosted APIs in host-owned packages or applications.
+
+Platform tickets, workflows, dependencies, and QA entries are not special kernel entities. They are
+ordinary `collection` records that the dashboard filters by `kind`:
+
+- `platform.ticket`
+- `platform.workflow`
+- `platform.dependency`
+- `platform.qa`
+
+This keeps platform operations visible to the dashboard, MCP tools, plugins, workflows, and import
+adapters through the same Read API and Write API.
+
+## Authentication Boundary
+
+Bare CRM does not include admin login, user sessions, password auth, SSO, tenant membership, or
+RBAC. Those belong to the host product that embeds the kernel or exposes the dashboard.
+
+The local dashboard constructs its execution context on the server from trusted configuration.
+Browser requests do not get to choose actor identity, workspace authority, storage credentials, or
+capabilities.
+
+To make this boundary explicit, dashboard requests to `/admin`, `/admin/login`, or `/login` return
+`dashboard.auth_not_implemented` with HTTP `501`. A production product should put its own
+authentication layer in front of the dashboard or build a separate host-owned admin UI.
 
 ## Data Exposure
 
@@ -64,10 +85,7 @@ the list endpoint returns `title`, `subtitle`, badges, and refs. The detail endp
 timeline, and relation sections. The event metadata endpoint strips committed event record snapshots
 and does not return raw event `record` payloads.
 
-Production products should put their own authentication, session, tenant, RBAC, masking, and audit
-layers in front of this pattern. The dashboard constructs kernel execution context on the server;
-the browser does not provide actor identity, workspace authority, storage credentials, or
-capabilities.
+Production products should also put masking and audit layers in front of this pattern when needed.
 
 ## API Shape
 
@@ -76,6 +94,8 @@ The current routes are intentionally boring and local to this dashboard:
 ```txt
 GET  /
 GET  /api/workbench/records?type=person&q=ada
+GET  /api/workbench/records?type=collection&kind=platform.ticket
+GET  /api/workbench/platform
 GET  /api/workbench/records/:type/:id
 POST /api/workbench/records
 POST /api/workbench/records/:type/:id/archive

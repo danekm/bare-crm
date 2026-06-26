@@ -19,26 +19,31 @@ flowchart TB
 
   Src --> Kernel["kernel\nWrite API, Read API, Event Log"]
   Src --> Storage["storage adapters\nmemory, SQLite, Postgres"]
-  Src --> Optional["optional contracts\nMCP, plugins"]
+  Src --> Optional["experimental contracts\nMCP, plugins"]
 
   Docs --> Architecture["architecture"]
   Docs --> Entities["entities"]
   Docs --> APIs["write, read, storage, event APIs"]
-  Docs --> OptionalDocs["plugins, workflows, MCP, Noros"]
+  Docs --> OptionalDocs["advanced/lab docs\nplugins, workflows, MCP, Noros"]
 ```
 
 The repository starts as one small Deno package. A package split should wait until the API is stable
 enough to justify publishing multiple artifacts.
 
-Likely future packages:
+Stable package direction:
 
 - `@bare-crm/kernel`
 - `@bare-crm/sqlite`
 - `@bare-crm/postgres`
+- `@bare-crm/cli`
+
+Experimental packages should wait until the kernel API is settled:
+
 - `@bare-crm/mcp`
 - `@bare-crm/plugin-sdk`
 - `@bare-crm/workflows`
-- `@bare-crm/cli`
+- app plugins
+- dashboards and frontend workbenches
 
 ## README Outline
 
@@ -54,6 +59,7 @@ The README should explain:
 - Noros-compatible but not Noros-dependent
 - no required UI
 - no embedded model or workflow runner in the core
+- dashboards and workflow marketplaces are labs/examples, not the public center of gravity
 - how it differs from Twenty, Corteza, Directus, EspoCRM, and SuiteCRM
 
 ## License Decision
@@ -78,9 +84,11 @@ Current first-pass documentation:
 - `docs/storage-api.md`
 - `docs/sqlite.md`
 - `docs/postgres-supabase.md`
+- `docs/publishing.md`
 - `docs/policies-workflows.md`
 - `docs/plugins.md`
 - `docs/plugin-development.md`
+- `docs/plugin-data-safety.md`
 - `docs/mcp.md`
 - `docs/noros.md`
 - `docs/import-export.md`

@@ -1,0 +1,35 @@
+{
+  "id": "bare.instagram",
+  "name": "Bare Instagram Threads",
+  "version": "0.1.0",
+  "description": "Instagram thread follower that captures selected comments, mentions, and DMs as CRM memory.",
+  "capabilities": [
+    "crm:read:record.search",
+    "crm:write:collection.create",
+    "crm:write:activity.create",
+    "crm:write:task.create",
+    "plugin:commands",
+    "plugin:profiles",
+    "plugin:sync",
+    "network:external",
+    "secrets:read"
+  ],
+  "contributes": {
+    "collectionProfiles": [
+      {
+        "id": "instagram.thread",
+        "name": "Instagram thread",
+        "allowedStatuses": ["open", "closed"],
+        "allowedOutcomes": ["responded", "no_action", "archived"]
+      }
+    ],
+    "syncs": [
+      {
+        "id": "instagram.thread-sync",
+        "name": "Instagram watched thread sync",
+        "system": "instagram",
+        "direction": "import"
+      }
+    ]
+  }
+}

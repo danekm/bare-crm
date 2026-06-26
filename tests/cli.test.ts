@@ -31,6 +31,7 @@ Deno.test("CLI help lists small command surface", async () => {
   assertEquals(stdout[0].includes("db status sqlite <path>"), true)
   assertEquals(stdout[0].includes("db migrate sqlite <path>"), true)
   assertEquals(stdout[0].includes("plugins validate <path>"), true)
+  assertEquals(stdout[0].includes("dashboard"), false)
 })
 
 Deno.test("CLI accepts a task-style argument separator", async () => {
@@ -89,6 +90,15 @@ Deno.test("unknown commands return help and a usage error", async () => {
   assertEquals(code, 2)
   assertEquals(stderr[0].includes("Unknown command: unknown"), true)
   assertEquals(stderr[0].includes("Usage: crm <command>"), true)
+})
+
+Deno.test("dashboard is not part of the stable CLI command surface", async () => {
+  const { io, stderr } = createTestIo()
+
+  const code = await runCli(["dashboard"], io)
+
+  assertEquals(code, 2)
+  assertEquals(stderr[0].includes("Unknown command: dashboard"), true)
 })
 
 Deno.test("db schema postgres prints official schema SQL", async () => {

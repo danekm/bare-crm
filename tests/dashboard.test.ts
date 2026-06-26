@@ -22,7 +22,22 @@ Deno.test("dashboard serves the workbench shell", async () => {
 
   assertEquals(response.status, 200)
   assert(body.includes("Bare CRM Dashboard"))
+  assert(body.includes("Platform"))
+  assert(body.includes("Tickets"))
   assert(body.includes("/assets/dashboard.js"))
+})
+
+Deno.test("dashboard makes host-owned admin auth boundary explicit", async () => {
+  const handler = createHandler()
+
+  for (const path of ["/admin", "/admin/login", "/login"]) {
+    const response = await handler(new Request(`http://localhost${path}`))
+    const body = await json(response)
+
+    assertEquals(response.status, 501)
+    assertEquals(body.ok, false)
+    assertEquals((body.error as { code: string }).code, "dashboard.auth_not_implemented")
+  }
 })
 
 Deno.test("dashboard creates and lists projected records through the kernel", async () => {
@@ -97,6 +112,103 @@ Deno.test("dashboard detail returns UI projections rather than raw records", asy
   assertEquals(detail.fields.some((field) => field.label === "Domain"), true)
   assertEquals(Array.isArray(detail.timeline), true)
   assertEquals(Array.isArray(detail.relations), true)
+})
+
+Deno.test("dashboard creates and filters platform collection profiles", async () => {
+  const handler = createHandler()
+
+  const createResponse = await handler(
+    new Request("http://localhost/api/workbench/records", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "collection",
+        data: {
+          title: "Wire CRM into platform dashboard",
+          kind: "platform.ticket",
+          status: "open",
+          summary: "Expose tickets, dependencies, workflows, and QA from the dashboard.",
+          tags: "dashboard,qa",
+        },
+        idempotencyKey: "test:create:platform-ticket",
+      }),
+    }),
+  )
+  const createBody = await json(createResponse)
+
+  assertEquals(createResponse.status, 201)
+  assertEquals(createBody.ok, true)
+  assertEquals(
+    (createBody.item as { title: string; subtitle: string }).title,
+    "Wire CRM into platform dashboard",
+  )
+  assertEquals((createBody.item as { subtitle: string }).subtitle, "platform.ticket / open")
+
+  const listResponse = await handler(
+    new Request(
+      "http://localhost/api/workbench/records?type=collection&kind=platform.ticket&q=platform",
+    ),
+  )
+  const listBody = await json(listResponse)
+  const items = listBody.items as Array<{ title: string; badges: string[] }>
+
+  assertEquals(listResponse.status, 200)
+  assertEquals(items.length, 1)
+  assertEquals(items[0].badges.includes("open"), true)
+  assertEquals(items[0].badges.includes("dashboard"), true)
+})
+
+Deno.test("dashboard platform overview summarizes tickets workflows dependencies and qa", async () => {
+  const handler = createHandler()
+
+  for (
+    const [title, kind, status] of [
+      ["Ticket one", "platform.ticket", "open"],
+      ["Workflow one", "platform.workflow", "active"],
+      ["Dependency one", "platform.dependency", "blocked"],
+      ["QA one", "platform.qa", "failing"],
+    ]
+  ) {
+    await handler(
+      new Request("http://localhost/api/workbench/records", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "collection",
+          data: { title, kind, status },
+          idempotencyKey: `test:create:${kind}`,
+        }),
+      }),
+    )
+  }
+
+  await handler(
+    new Request("http://localhost/api/workbench/records", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "task",
+        data: { title: "QA follow-up", status: "doing" },
+        idempotencyKey: "test:create:qa-follow-up",
+      }),
+    }),
+  )
+
+  const response = await handler(new Request("http://localhost/api/workbench/platform"))
+  const body = await json(response)
+  const metrics = body.metrics as Record<string, number>
+  const sections = body.sections as Array<{ key: string; items: unknown[] }>
+
+  assertEquals(response.status, 200)
+  assertEquals(metrics.openTickets, 1)
+  assertEquals(metrics.activeWorkflows, 1)
+  assertEquals(metrics.unresolvedDependencies, 1)
+  assertEquals(metrics.qaAtRisk, 1)
+  assertEquals(metrics.openTasks, 1)
+  assertEquals(sections.map((section) => section.key), [
+    "tickets",
+    "workflows",
+    "dependencies",
+    "qa",
+  ])
+  assertEquals(sections.every((section) => section.items.length === 1), true)
 })
 
 Deno.test("dashboard detail works with SQLite storage transactions", async () => {

@@ -13,7 +13,7 @@ import {
   bareGmailPluginManifest,
   createBareGmailPluginRunner,
   installBareGmailPlugin,
-} from "../plugins/bare-gmail/mod.ts"
+} from "../src/adapters/gmail/mod.ts"
 
 const workspaceId = "workspace_1"
 

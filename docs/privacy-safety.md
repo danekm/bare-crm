@@ -4,11 +4,15 @@ Bare CRM stores private customer data by design. The safety goal is not that pri
 be read; authorized Read API calls must return CRM facts. The safety goal is that operational
 surfaces do not leak private data accidentally.
 
+Plugin data movement has a stricter checklist in [Plugin Data Safety](plugin-data-safety.md). That
+document covers workspace scope, secrets, data minimization, no raw provider payloads, idempotency,
+and plugin review requirements.
+
 ## Safe By Default Surfaces
 
 These surfaces should return metadata, counts, codes, and redacted status by default:
 
-- Admin API diagnostics
+- admin helper diagnostics
 - CLI `doctor`
 - CLI database status and migration output
 - plugin validation summaries
@@ -24,6 +28,8 @@ payloads, access tokens, refresh tokens, passwords, API keys, or connection stri
 - CLI operator errors redact email addresses, common API tokens, secret query values, and Postgres
   connection strings.
 - Plugin manifests cannot request `storage:*` capabilities.
+- Plugin data safety docs require minimization, workspace scope, explicit capabilities, and no raw
+  provider payload storage by default.
 - Tests seed obvious private fixture values and assert they do not appear in safe admin/CLI output.
 
 ## Design Rule
@@ -31,5 +37,5 @@ payloads, access tokens, refresh tokens, passwords, API keys, or connection stri
 If a new admin, CLI, monitor, dashboard, canary, or migration command needs CRM data, add a privacy
 regression test before exposing the output.
 
-Use the Read API for intentional data reads. Use the Admin API or another explicitly redacted shape
+Use the Read API for intentional data reads. Use admin helpers or another explicitly redacted shape
 for operational surfaces.

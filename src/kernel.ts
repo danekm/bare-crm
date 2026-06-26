@@ -19,6 +19,7 @@ import type {
   WriteOptions,
   WriteResultByName,
 } from "./types.ts"
+import { validateWriteInput, WriteValidationError } from "./validation.ts"
 
 export class CrmKernelError extends Error {
   constructor(
@@ -78,6 +79,14 @@ export function createCrmKernel(
       context: writeOptions?.context,
       enforceCapabilities,
     })
+    try {
+      validateWriteInput(name, input)
+    } catch (error) {
+      if (error instanceof WriteValidationError) {
+        throw new CrmKernelError(error.code, error.message, error.field)
+      }
+      throw error
+    }
 
     const idempotencyKey = writeOptions?.idempotencyKey
       ? `${workspaceId}:${name}:${writeOptions.idempotencyKey}`

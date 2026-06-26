@@ -35,6 +35,25 @@ const renewalPlugin: PluginManifest = {
   },
 }
 
+const workbenchUiPlugin: PluginManifest = {
+  id: "example.workbench-ui",
+  name: "Workbench UI",
+  version: "0.1.0",
+  capabilities: ["plugin:ui", "crm:read:record.search"],
+  contributes: {
+    uiSlots: [{
+      id: "followups-nav",
+      slot: "workspace.nav",
+      label: "Follow-ups",
+      icon: "Mail",
+      route: "/follow-ups",
+      commandId: "followups.stalled_deals",
+      recordTypes: ["deal"],
+      requires: ["crm:read:record.search"],
+    }],
+  },
+}
+
 Deno.test("extension host stores workspace-scoped plugin state and profiles", () => {
   const host = createExtensionHost({ crm: createCrmKernel(), now: fixedNow })
 
@@ -115,6 +134,37 @@ Deno.test("extension host validates collections against profiles outside the ker
     }).ok,
     true,
   )
+})
+
+Deno.test("extension host lists UI slots only for enabled plugins with approved UI capability", () => {
+  const host = createExtensionHost({ crm: createCrmKernel(), now: fixedNow })
+  host.installPlugin({
+    workspaceId: "workspace_1",
+    manifest: workbenchUiPlugin,
+    approvedCapabilities: [],
+    enabled: true,
+  })
+  assertEquals(host.listUiSlots({ workspaceId: "workspace_1" }), [])
+
+  host.approveCapabilities({
+    workspaceId: "workspace_1",
+    pluginId: "example.workbench-ui",
+    capabilities: ["plugin:ui"],
+  })
+  assertEquals(host.listUiSlots({ workspaceId: "workspace_1" }), [{
+    pluginId: "example.workbench-ui",
+    id: "followups-nav",
+    slot: "workspace.nav",
+    label: "Follow-ups",
+    icon: "Mail",
+    route: "/follow-ups",
+    commandId: "followups.stalled_deals",
+    recordTypes: ["deal"],
+    requires: ["crm:read:record.search"],
+  }])
+
+  host.disablePlugin({ workspaceId: "workspace_1", pluginId: "example.workbench-ui" })
+  assertEquals(host.listUiSlots({ workspaceId: "workspace_1" }), [])
 })
 
 Deno.test("extension host writes as plugins with approved capabilities", async () => {

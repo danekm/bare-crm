@@ -15,7 +15,10 @@ Support or Gmail plugin
       -> Kernel
 ```
 
-The first concrete plugin is `plugins/bare-supabase-users/`.
+The first concrete plugin adapter is `src/adapters/supabase-users/`.
+
+Because app-user lookup moves personal information across boundaries, it must follow
+[Plugin Data Safety](plugin-data-safety.md).
 
 ## Why This Is A Plugin
 
@@ -67,6 +70,10 @@ The durable CRM link should be small:
 ```
 
 Store only useful, low-risk traits in CRM. Full app-user records stay in the app database.
+
+Do not store Supabase auth metadata, service role keys, session state, billing details, or raw
+profile rows in CRM records, Event Log payloads, plugin manifests, CLI output, dashboard responses,
+or logs.
 
 ## Workspace Scope
 

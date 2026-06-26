@@ -36,7 +36,7 @@ sequenceDiagram
 
 ## Tool Registry
 
-The executable registry lives in `src/mcp.ts` as `MCP_TOOL_DEFINITIONS`.
+The executable registry lives in `src/adapters/mcp/mod.ts` as `MCP_TOOL_DEFINITIONS`.
 
 | MCP tool             | Kind   | Kernel operation     | Mutates |
 | -------------------- | ------ | -------------------- | ------- |
@@ -62,7 +62,7 @@ the adapter accepts an optional policy issue provider. Without one, it returns a
 
 ## Resource Registry
 
-The executable registry lives in `src/mcp.ts` as `MCP_RESOURCE_TEMPLATES`.
+The executable registry lives in `src/adapters/mcp/mod.ts` as `MCP_RESOURCE_TEMPLATES`.
 
 | Resource                               | Behavior                                               |
 | -------------------------------------- | ------------------------------------------------------ |

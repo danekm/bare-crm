@@ -1,0 +1,93 @@
+# Bare Instagram Plugin
+
+Bare Instagram is an observe-first social adapter. It follows selected Instagram comments, mentions,
+and direct-message threads while keeping Instagram as the communication surface.
+
+The executable first slice lives in `src/adapters/instagram/`. It includes a portable `plugin.json`,
+typed provider snapshots, mapper helpers, a deterministic thread runner, a fakeable sync harness,
+and plugin-owned watched-thread state. `plugins/bare-instagram/` remains as a compatibility package
+shell and README location.
+
+The plugin follows [Plugin Data Safety](plugin-data-safety.md): minimize copied data, keep OAuth
+tokens and webhook secrets out of CRM, scope every operation by workspace, and make sync idempotent.
+
+## Why This Is Not A Social Inbox
+
+Instagram remains the social surface. Bare CRM stores normalized relationship memory:
+
+- `Collection` for a selected Instagram thread worth following
+- `Activity` for new inbound replies worth recording
+- `Task` for optional human review
+- `Relation`, `Note`, or `File` only when a host workflow deliberately creates them
+
+Raw Instagram payloads, OAuth tokens, webhook signatures, sync cursors, seen reply ids, ignored
+threads, and app-review/provider configuration are plugin-owned data.
+
+## Thread Sources
+
+The adapter is shaped around selected threads, not account-wide harvesting:
+
+- owned media comment threads
+- mentions that should become a CRM-followed context
+- direct-message threads where a production host has approved Messaging API access
+
+The current package defines an `InstagramApiClient` boundary. A production host can back that with
+Meta webhooks, Graph API reads, Messaging API reads, or a provider service that normalizes those
+events into `InstagramThreadSnapshot`.
+
+## Sync Flow
+
+Expected flow:
+
+1. Seed a watched thread from an Instagram media/comment/mention/DM reference.
+2. Fetch thread changes through the adapter client.
+3. Ignore outbound/self replies unless `includeOutbound` is enabled.
+4. Deduplicate by reply id and CRM external refs.
+5. Create or reuse an `instagram.thread` collection.
+6. Create message activities for unseen inbound replies.
+7. Optionally create review tasks for replies marked `requiresReview`.
+8. Store watched-thread state and seen reply ids outside the kernel.
+
+The adapter does not auto-send replies.
+
+## Kernel Command Usage
+
+Observed or confirmed replies map to existing kernel writes:
+
+| Plugin action       | Kernel operation    |
+| ------------------- | ------------------- |
+| create thread group | `collection.create` |
+| save observed reply | `activity.create`   |
+| create review task  | `task.create`       |
+
+Use `source: "plugin"` and stable external refs:
+
+```ts
+;[
+  { system: "instagram", id: "thread:ig_thread_1", kind: "canonical" },
+  { system: "instagram", id: "reply:ig_reply_1", kind: "dedupe" },
+]
+```
+
+Plugin-owned Instagram detail belongs in `custom.instagram`.
+
+## Dedupe
+
+Stable idempotency keys:
+
+```txt
+instagram:thread:{threadId}:collection
+instagram:reply:{replyId}:activity
+instagram:reply:{replyId}:review-task
+```
+
+Repeated webhook delivery, polling, or manual sync should not create duplicate collections,
+activities, or tasks.
+
+## Non-Goals
+
+- no Instagram-specific kernel entity
+- no account-wide social inbox
+- no raw payload dump into CRM records
+- no automatic public or DM replies
+- no production OAuth/webhook host in the first helper slice

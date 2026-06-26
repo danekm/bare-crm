@@ -5,14 +5,27 @@ Bare CRM has two install surfaces:
 - package install for builders embedding the kernel
 - CLI install for local operators
 
-It does not have a UI installer yet. Bare CRM is a kernel and operator tool first, not a packaged
-CRM app.
+It also has a small project wizard for starter Deno apps. The wizard is not a UI installer. Bare CRM
+is a kernel and operator tool first, not a packaged CRM app.
 
 ## Requirements
 
 - Deno
 - SQLite native support when using SQLite storage or the `crm` CLI SQLite commands
 - A Postgres client/pool supplied by the host app when using Postgres storage
+
+## Project Wizard
+
+Create a small starter project with the npm wizard:
+
+```sh
+npx -y @bare-crm/wizard@latest init my-crm
+```
+
+SQLite is the default starter storage adapter. Use `--storage memory` for a quick in-memory
+prototype.
+
+The full wizard notes live in [Project Wizard](wizard.md).
 
 ## Package Install
 
@@ -54,6 +67,18 @@ const crm = createCrmKernel({ storage })
 ```
 
 Postgres does not force a specific driver. The host app provides a compatible client or pool.
+
+Use the Gmail plugin package:
+
+```ts
+import { createBareGmailPluginRunner } from "@bare-crm/kernel/plugins/gmail"
+```
+
+Use the Supabase app-user lookup plugin package:
+
+```ts
+import { createSupabaseUsersPluginRunner } from "@bare-crm/kernel/plugins/supabase-users"
+```
 
 ## CLI Install
 
@@ -101,7 +126,7 @@ deno task crm -- db migrate sqlite ./bare-crm.db
 
 ## Publish Check
 
-Before publishing the package:
+Before tagging a release:
 
 ```sh
 deno fmt
@@ -109,6 +134,41 @@ deno task check
 deno task test
 deno task publish:dry-run
 ```
+
+## Publish From GitHub
+
+Publishing uses `.github/workflows/publish.yml`. The full release procedure lives in
+[Publishing](publishing.md).
+
+One-time setup:
+
+1. Create or claim the JSR scope/package `@bare-crm/kernel`.
+2. Link the JSR package to the GitHub repository.
+3. Confirm the GitHub Actions workflow has `id-token: write` permission for OIDC publishing.
+
+Release flow:
+
+```sh
+git switch main
+git pull --ff-only
+deno fmt
+deno task check
+deno task test
+deno task publish:dry-run
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The `v0.1.0` tag triggers GitHub Actions. The workflow reruns format, typecheck, tests, and then
+publishes to JSR with `deno publish`.
+
+After the workflow passes, create a GitHub Release for the same tag and include:
+
+- package name: `jsr:@bare-crm/kernel`
+- install command: `deno add jsr:@bare-crm/kernel`
+- exported surfaces: kernel, SQLite, Postgres, Extension Host, CLI, Gmail plugin, Supabase users
+  plugin
+- safety docs: `docs/plugin-data-safety.md` and `docs/generated/plugin-safety-coverage.md`
 
 Publishing should wait until the public API has been reviewed.
 
@@ -125,4 +185,5 @@ A UI installer would imply product choices that are intentionally outside the ke
 - migration confirmation screens
 - admin dashboard
 
-Those can be built later on top of the package and CLI surfaces.
+Those can be built later on top of the package and CLI surfaces, and should remain examples or
+separate products until the kernel contracts are stable.

@@ -38,21 +38,29 @@ deno task test
 
 ## Current Test Files
 
-| File                                    | Layer                   | What it protects                                      |
-| --------------------------------------- | ----------------------- | ----------------------------------------------------- |
-| `tests/kernel.test.ts`                  | kernel contract         | writes, reads, events, permissions, idempotency       |
-| `tests/storage.test.ts`                 | storage conformance     | storage transactions, filtering, rollback, conflicts  |
-| `tests/migrations.test.ts`              | migrations              | SQLite/Postgres migration status, dry-run, rerun      |
-| `tests/cli.test.ts`                     | CLI/privacy             | command output, errors, doctor redaction, migrations  |
-| `tests/mcp.test.ts`                     | adapter boundary        | MCP maps to Read/Write APIs and structured errors     |
-| `tests/plugins.test.ts`                 | plugin boundary         | manifest validation and forbidden storage capability  |
-| `tests/import_export.test.ts`           | adapter boundary        | import/export uses Read API and Write API             |
-| `tests/extensions.test.ts`              | extension host          | plugin lifecycle, capabilities, profiles, cursors     |
-| `tests/hard_rules.test.ts`              | architecture guardrails | hard-rule docs and plugin storage-access prohibition  |
-| `tests/plugin_development_docs.test.ts` | documentation contract  | plugin authoring docs keep boundary language          |
-| `tests/privacy_safety.test.ts`          | privacy/security        | safe admin/CLI output omits private fixture values    |
-| `tests/gmail_plugin.test.ts`            | project/plugin behavior | Gmail helper behavior outside kernel conformance      |
-| `tests/fake_postgres.ts`                | test support            | local Postgres-compatible executor for contract tests |
+| File                                       | Layer                   | What it protects                                       |
+| ------------------------------------------ | ----------------------- | ------------------------------------------------------ |
+| `tests/kernel.test.ts`                     | kernel contract         | writes, reads, events, permissions, idempotency        |
+| `tests/storage.test.ts`                    | storage conformance     | storage transactions, filtering, rollback, conflicts   |
+| `tests/migrations.test.ts`                 | migrations              | SQLite/Postgres migration status, dry-run, rerun       |
+| `tests/cli.test.ts`                        | CLI/privacy             | command output, errors, doctor redaction, migrations   |
+| `tests/mcp.test.ts`                        | adapter boundary        | MCP maps to Read/Write APIs and structured errors      |
+| `tests/plugins.test.ts`                    | plugin boundary         | manifest validation and forbidden storage capability   |
+| `tests/import_export.test.ts`              | adapter boundary        | import/export uses Read API and Write API              |
+| `tests/extensions.test.ts`                 | extension host          | plugin lifecycle, capabilities, profiles, cursors      |
+| `tests/hard_rules.test.ts`                 | architecture guardrails | hard-rule docs and plugin storage-access prohibition   |
+| `tests/generated_docs.test.ts`             | documentation contract  | generated safety coverage docs stay reproducible       |
+| `tests/plugin_development_docs.test.ts`    | documentation contract  | plugin authoring docs keep boundary language           |
+| `tests/plugin_data_safety_docs.test.ts`    | documentation contract  | plugin data-safety docs keep privacy boundary language |
+| `tests/plugin_data_safety_runtime.test.ts` | privacy/security        | plugin secrets, raw payloads, and audit metadata       |
+| `tests/privacy_safety.test.ts`             | privacy/security        | safe admin/CLI output omits private fixture values     |
+| `tests/gmail_plugin.test.ts`               | project/plugin behavior | Gmail helper behavior outside kernel conformance       |
+| `tests/bare_gmail_plugin.test.ts`          | project/plugin behavior | Gmail runner idempotency and capability boundaries     |
+| `tests/bare_gmail_sync.test.ts`            | project/plugin behavior | Gmail sync cursor safety with fake transport           |
+| `tests/bare_google_tasks_plugin.test.ts`   | project/plugin behavior | Google Tasks bidirectional sync behavior               |
+| `tests/bare_granola_plugin.test.ts`        | project/plugin behavior | Granola meeting memory, privacy, and sync behavior     |
+| `tests/supabase_users_plugin.test.ts`      | project/plugin behavior | Supabase app-user lookup plugin behavior               |
+| `tests/fake_postgres.ts`                   | test support            | local Postgres-compatible executor for contract tests  |
 
 ## Security And Privacy Tests
 
@@ -68,6 +76,11 @@ Current coverage:
 - CLI doctor tests assert obvious private fixture values are not printed
 - admin metadata tests assert Event Log record snapshots are not returned
 - privacy regression tests seed private fixture values and assert safe outputs omit them
+- plugin data-safety docs assert minimization, workspace scope, secrets, no raw payload storage,
+  idempotency, and retention language
+- plugin data-safety runtime tests assert Supabase secrets, raw Supabase fields, and raw Gmail
+  payload fields do not enter CRM records or Event Log snapshots
+- plugin data-safety runtime tests assert plugin writes carry plugin actor and idempotency metadata
 - CLI operator errors redact common private-looking values
 - migration CLI output reports metadata only
 

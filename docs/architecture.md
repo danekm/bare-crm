@@ -19,18 +19,38 @@ Storage API implementations
   - Postgres / Supabase
 
 Optional layers outside core
-  - extension host
+  - adapter host / extension host
+  - adapters
   - policies
   - workflows
   - background jobs
   - plugins
-  - MCP
-  - CLI / HTTP API
   - UI
   - Noros / agents
 ```
 
 The kernel has no embedded model, no agent brain, no UI, and no workflow runner.
+
+## Repository Map
+
+Agent-facing and integration-facing code lives under `src/adapters/`:
+
+```txt
+src/adapters/
+  compact-read/     # token budgets, cursors, summaries
+  mcp/              # MCP tool/resource mapping
+  cli/              # command parser and command handlers
+  gmail/            # Gmail plugin adapter
+  google-tasks/     # Google Tasks execution-surface adapter
+  granola/          # Granola meeting-memory adapter
+  instagram/        # Instagram observe-only thread adapter
+  reddit/           # Reddit observe-only thread adapter
+  supabase-users/   # Supabase app-user lookup adapter
+```
+
+Compatibility entrypoints such as `src/cli.ts`, `src/mcp.ts`, `src/read_compact.ts`, and
+`plugins/bare-gmail/mod.ts` are thin shims. New implementation should go in `src/adapters/*`, not in
+those shims.
 
 The [Extension Host](extension-host.md) is the recommended outer boundary for production plugin
 systems. It owns plugin lifecycle, workspace-scoped extension state, schema/profile contributions,

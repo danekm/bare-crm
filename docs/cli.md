@@ -5,8 +5,8 @@ Bare CRM can expose a small operator CLI named `crm`.
 The CLI is an admin and development surface over official kernel APIs and storage adapter helpers.
 It is not a second CRM product, a raw SQL shell, or a plugin runtime.
 
-Reusable admin logic lives in the [Admin API](admin-api.md). The CLI is the terminal presentation
-for that logic.
+Reusable admin logic lives in the [admin surface](admin-surface.md). The CLI is the terminal
+presentation for that logic.
 
 ## Current Commands
 
@@ -70,6 +70,10 @@ complete.
 `crm plugins validate <path>`
 
 Validates a plugin manifest and rejects forbidden capabilities such as direct `storage:*` access.
+
+The stable CLI does not start the dashboard, run workflows, call local HTTP routes, or act as a
+plugin runtime. Lab tools may exist as separate tasks, but `crm` should stay a boring local operator
+surface over package APIs.
 
 ## Migration Shape
 

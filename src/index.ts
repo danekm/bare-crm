@@ -10,6 +10,25 @@ export type {
   CrmAdmin,
   CrmAdminOptions,
 } from "./admin.ts"
+export {
+  createPluginCommandRuntime,
+  pluginCommandHandlerKey,
+  PluginCommandRuntimeError,
+} from "./commands.ts"
+export type {
+  PluginCommandAction,
+  PluginCommandActionType,
+  PluginCommandCard,
+  PluginCommandHandler,
+  PluginCommandHandlerInput,
+  PluginCommandHandlerResult,
+  PluginCommandInvokeInput,
+  PluginCommandRunError,
+  PluginCommandRunResult,
+  PluginCommandRunStatus,
+  PluginCommandRuntime,
+  PluginCommandRuntimeOptions,
+} from "./commands.ts"
 export { createExtensionHost, createMemorySecretStore, ExtensionHostError } from "./extensions.ts"
 export type {
   CollectionProfileValidationIssue,
@@ -49,6 +68,12 @@ export {
   createGmailThreadCollectionInput,
   gmailMessageDedupeKey,
 } from "./gmail_plugin.ts"
+export {
+  bareFollowupsManifest,
+  createStalledDealFollowupHandler,
+  findStalledDealDrafts,
+} from "./adapters/followups/mod.ts"
+export type { FollowupDraftRow, StalledDealFollowupOptions } from "./adapters/followups/mod.ts"
 export type {
   GmailActivityDraftInput,
   GmailAddress,
@@ -100,6 +125,7 @@ export type {
   PluginRuntimeCapability,
   PluginSyncContribution,
   PluginUiSlotContribution,
+  PluginUiSlotName,
   PluginWorkflowContribution,
 } from "./plugins.ts"
 export { createMemoryStorage, StorageConflictError } from "./storage.ts"

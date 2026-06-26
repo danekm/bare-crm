@@ -80,10 +80,20 @@ const creatableTypes = new Set<EntityType>([
   "person",
   "company",
   "deal",
+  "collection",
   "task",
   "note",
   "activity",
 ])
+const platformProfiles = [
+  { key: "tickets", label: "Tickets", kind: "platform.ticket" },
+  { key: "workflows", label: "Workflows", kind: "platform.workflow" },
+  { key: "dependencies", label: "Dependencies", kind: "platform.dependency" },
+  { key: "qa", label: "QA", kind: "platform.qa" },
+] as const
+const hostAuthBoundaryPaths = new Set(["/admin", "/admin/login", "/login"])
+const hostAuthBoundaryMessage =
+  "Bare CRM does not include admin login. Put the dashboard behind host authentication and construct trusted execution context server-side."
 
 export function createDashboardHandler(
   options: DashboardServerOptions,
@@ -104,6 +114,9 @@ export function createDashboardHandler(
 
     try {
       if (request.method === "GET" && url.pathname === "/") return htmlResponse(indexHtml)
+      if (hostAuthBoundaryPaths.has(url.pathname)) {
+        return jsonError("dashboard.auth_not_implemented", hostAuthBoundaryMessage, 501)
+      }
       if (request.method === "GET" && url.pathname === "/assets/dashboard.css") {
         return assetResponse(dashboardCss, "text/css; charset=utf-8")
       }
@@ -114,12 +127,67 @@ export function createDashboardHandler(
       if (request.method === "GET" && url.pathname === "/api/workbench/records") {
         const type = parseOptionalEntityType(url.searchParams.get("type"))
         const text = emptyToUndefined(url.searchParams.get("q"))
+        const kind = emptyToUndefined(url.searchParams.get("kind"))
         const records = await options.crm.read(
           "record.search",
-          { workspaceId, type, text, limit: 50 },
+          { workspaceId, type, text, limit: kind ? 200 : 50 },
           readOptions,
         )
-        return jsonResponse({ ok: true, items: records.map(toRecordListItem) })
+        return jsonResponse({
+          ok: true,
+          items: filterRecordsByKind(records, kind).slice(0, 50).map(toRecordListItem),
+        })
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/workbench/platform") {
+        const collections = await options.crm.read(
+          "record.search",
+          { workspaceId, type: "collection", limit: 200 },
+          readOptions,
+        )
+        const tasks = await options.crm.read(
+          "record.search",
+          { workspaceId, type: "task", limit: 100 },
+          readOptions,
+        )
+        const events = await options.crm.read("event.list", { workspaceId, limit: 10 }, readOptions)
+
+        return jsonResponse({
+          ok: true,
+          sections: platformProfiles.map((profile) => ({
+            key: profile.key,
+            label: profile.label,
+            kind: profile.kind,
+            items: filterRecordsByKind(collections, profile.kind).slice(0, 12).map(
+              toRecordListItem,
+            ),
+          })),
+          metrics: {
+            openTickets: countCollections(collections, "platform.ticket", [
+              "open",
+              "active",
+              "blocked",
+            ]),
+            activeWorkflows: countCollections(collections, "platform.workflow", [
+              "active",
+              "running",
+            ]),
+            unresolvedDependencies: countCollections(collections, "platform.dependency", [
+              "open",
+              "blocked",
+              "waiting",
+            ]),
+            qaAtRisk: countCollections(collections, "platform.qa", [
+              "blocked",
+              "failing",
+              "at_risk",
+            ]),
+            openTasks: tasks.filter((record): record is Task =>
+              record.type === "task" && ["todo", "doing"].includes(record.status)
+            ).length,
+          },
+          events: events.map(toEventMetadata),
+        })
       }
 
       if (request.method === "POST" && url.pathname === "/api/workbench/records") {
@@ -263,6 +331,26 @@ function createRecordInput(
         currency: emptyToUndefined(stringValue(data.currency)) ?? undefined,
         source: "manual",
       } satisfies WriteInputByName["deal.create"]
+    case "collection": {
+      const kind = emptyToUndefined(stringValue(data.kind)) ?? "platform.ticket"
+      const summary = emptyToUndefined(stringValue(data.summary))
+      return {
+        workspaceId,
+        title: requiredString(data.title, "title"),
+        kind,
+        status: emptyToUndefined(stringValue(data.status)),
+        related: [],
+        tags: csvValues(data.tags),
+        custom: summary
+          ? {
+            platform: {
+              summary,
+            },
+          }
+          : undefined,
+        source: "manual",
+      } satisfies WriteInputByName["collection.create"]
+    }
     case "task":
       return {
         workspaceId,
@@ -353,6 +441,18 @@ function toTimelineItem(record: AnyRecord): DashboardTimelineItem {
 function toEventMetadata(event: CrmEvent): Omit<CrmEvent, "record"> {
   const { record: _record, ...metadata } = event
   return metadata
+}
+
+function filterRecordsByKind(records: AnyRecord[], kind?: string): AnyRecord[] {
+  if (!kind) return records
+  return records.filter((record) => record.type === "collection" && record.kind === kind)
+}
+
+function countCollections(records: AnyRecord[], kind: string, activeStatuses: string[]): number {
+  return records.filter((record) =>
+    record.type === "collection" && record.kind === kind &&
+    (!record.status || activeStatuses.includes(record.status))
+  ).length
 }
 
 function recordTitle(record: AnyRecord): string {
@@ -470,6 +570,15 @@ function recordFields(record: AnyRecord): Array<{ label: string; value: string }
         { label: "Occurred", value: shortDateTime(record.occurredAt) },
       )
       break
+    case "collection":
+      fields.unshift(
+        { label: "Title", value: record.title },
+        { label: "Kind", value: record.kind },
+        { label: "Status", value: record.status },
+        { label: "Summary", value: platformSummary(record) },
+        { label: "Related", value: String(record.related?.length ?? 0) },
+      )
+      break
   }
 
   return fields
@@ -484,6 +593,13 @@ function primaryEmail(record: Person): string | undefined {
 function money(record: Deal): string | undefined {
   if (record.value === undefined) return undefined
   return `${record.currency ?? "USD"} ${record.value.toLocaleString()}`
+}
+
+function platformSummary(record: { custom?: Record<string, unknown> }): string | undefined {
+  const platform = record.custom?.platform
+  if (!platform || typeof platform !== "object" || Array.isArray(platform)) return undefined
+  const summary = (platform as Record<string, unknown>).summary
+  return typeof summary === "string" ? summary : undefined
 }
 
 function preview(value: string): string {
@@ -574,6 +690,11 @@ function numberValue(value: unknown): number | undefined {
   return Number.isFinite(number) ? number : undefined
 }
 
+function csvValues(value: unknown): string[] | undefined {
+  const values = stringValue(value).split(",").map((item) => item.trim()).filter(Boolean)
+  return values.length ? values : undefined
+}
+
 function enumValue<T extends string>(value: unknown, values: readonly T[]): T | undefined {
   const candidate = stringValue(value)
   return values.includes(candidate as T) ? candidate as T : undefined
@@ -658,13 +779,24 @@ const indexHtml = `<!doctype html>
 
       <main class="layout">
         <nav class="sidebar" aria-label="Record types">
-          <button class="nav-item active" data-type="person">People</button>
-          <button class="nav-item" data-type="company">Companies</button>
-          <button class="nav-item" data-type="deal">Deals</button>
-          <button class="nav-item" data-type="task">Tasks</button>
-          <button class="nav-item" data-type="note">Notes</button>
-          <button class="nav-item" data-type="activity">Activities</button>
-          <button class="nav-item" data-type="all">All records</button>
+          <div class="nav-section">
+            <div class="nav-label">Platform</div>
+            <button class="nav-item active" data-view="platform">Overview</button>
+            <button class="nav-item" data-type="collection" data-kind="platform.ticket">Tickets</button>
+            <button class="nav-item" data-type="collection" data-kind="platform.workflow">Workflows</button>
+            <button class="nav-item" data-type="collection" data-kind="platform.dependency">Dependencies</button>
+            <button class="nav-item" data-type="collection" data-kind="platform.qa">QA</button>
+          </div>
+          <div class="nav-section">
+            <div class="nav-label">CRM</div>
+            <button class="nav-item" data-type="person">People</button>
+            <button class="nav-item" data-type="company">Companies</button>
+            <button class="nav-item" data-type="deal">Deals</button>
+            <button class="nav-item" data-type="task">Tasks</button>
+            <button class="nav-item" data-type="note">Notes</button>
+            <button class="nav-item" data-type="activity">Activities</button>
+            <button class="nav-item" data-type="all">All records</button>
+          </div>
         </nav>
 
         <section class="records-panel" aria-label="Records">
@@ -701,6 +833,7 @@ const indexHtml = `<!doctype html>
             <option value="person">Person</option>
             <option value="company">Company</option>
             <option value="deal">Deal</option>
+            <option value="collection">Platform item</option>
             <option value="task">Task</option>
             <option value="note">Note</option>
             <option value="activity">Activity</option>
@@ -866,8 +999,22 @@ textarea:focus,
 .sidebar {
   display: grid;
   align-content: start;
-  gap: 4px;
+  gap: 16px;
   padding: 14px;
+}
+
+.nav-section {
+  display: grid;
+  gap: 4px;
+}
+
+.nav-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  padding: 6px 10px 2px;
+  text-transform: uppercase;
 }
 
 .nav-item {
@@ -908,6 +1055,54 @@ textarea:focus,
 
 .record-list {
   overflow: auto;
+}
+
+.platform-overview {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  overflow: auto;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 11px;
+}
+
+.metric strong {
+  display: block;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.lane-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.lane {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.lane-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #fafafa;
 }
 
 .record-row {
@@ -1098,9 +1293,22 @@ textarea {
     border-bottom: 1px solid var(--line);
   }
 
+  .nav-section {
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-label {
+    padding: 0 6px;
+  }
+
   .nav-item {
     flex: 0 0 auto;
     white-space: nowrap;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
   }
 
   .detail-panel {
@@ -1111,14 +1319,23 @@ textarea {
 
 const dashboardJs = `
 const state = {
-  type: "person",
+  view: "platform",
+  type: "collection",
+  kind: "",
   query: "",
   items: [],
   selected: null,
+  platform: null,
 }
 
 const typeLabels = {
   all: "All records",
+  platform: "Platform overview",
+  collection: "Platform items",
+  "platform.ticket": "Tickets",
+  "platform.workflow": "Workflows",
+  "platform.dependency": "Dependencies",
+  "platform.qa": "QA",
   person: "People",
   company: "Companies",
   deal: "Deals",
@@ -1147,6 +1364,18 @@ const fieldTemplates = {
     ["value", "Value", "number", false],
     ["currency", "Currency", "text", false],
   ],
+  collection: [
+    ["title", "Title", "text", true],
+    ["kind", "Platform area", "select", false, [
+      "platform.ticket",
+      "platform.workflow",
+      "platform.dependency",
+      "platform.qa",
+    ]],
+    ["status", "Status", "text", false],
+    ["summary", "Summary", "textarea", false],
+    ["tags", "Tags", "text", false],
+  ],
   task: [
     ["title", "Title", "text", true],
     ["status", "Status", "select", false, ["todo", "doing", "done", "canceled"]],
@@ -1174,9 +1403,11 @@ const formError = document.querySelector("#form-error")
 
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {
-    state.type = button.dataset.type
+    state.view = button.dataset.view ?? "records"
+    state.type = button.dataset.type ?? "collection"
+    state.kind = button.dataset.kind ?? ""
     state.selected = null
-    document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item === button))
+    syncActiveNav()
     loadRecords()
   })
 })
@@ -1188,8 +1419,14 @@ searchInput.addEventListener("input", debounce(() => {
 
 document.querySelector("#new-record").addEventListener("click", () => {
   formError.hidden = true
-  createType.value = state.type === "all" ? "person" : state.type
+  createType.value = state.view === "platform" || state.type === "collection"
+    ? "collection"
+    : state.type === "all"
+    ? "person"
+    : state.type
   renderCreateFields()
+  const kindInput = document.querySelector('[name="kind"]')
+  if (kindInput && state.kind) kindInput.value = state.kind
   dialog.showModal()
 })
 
@@ -1210,10 +1447,16 @@ async function api(path, options = {}) {
 }
 
 async function loadRecords() {
-  heading.textContent = typeLabels[state.type] ?? "Records"
+  if (state.view === "platform") {
+    await loadPlatform()
+    return
+  }
+
+  heading.textContent = state.kind ? typeLabels[state.kind] : typeLabels[state.type] ?? "Records"
   list.innerHTML = '<div class="empty-state"><p>Loading records...</p></div>'
   const params = new URLSearchParams()
   params.set("type", state.type)
+  if (state.kind) params.set("kind", state.kind)
   if (state.query.trim()) params.set("q", state.query.trim())
 
   try {
@@ -1225,6 +1468,52 @@ async function loadRecords() {
   }
 }
 
+async function loadPlatform() {
+  heading.textContent = "Platform overview"
+  count.textContent = "Tickets, workflows, dependencies, QA"
+  list.innerHTML = '<div class="empty-state"><p>Loading platform...</p></div>'
+  detail.className = "empty-state"
+  detail.innerHTML = "<p>Select a platform item to inspect fields, timeline, and relations.</p>"
+
+  try {
+    const body = await api("/api/workbench/platform")
+    state.platform = body
+    renderPlatform()
+  } catch (error) {
+    list.innerHTML = '<div class="empty-state"><p>' + escapeHtml(error.message) + '</p></div>'
+  }
+}
+
+function renderPlatform() {
+  const metrics = state.platform.metrics
+  const metricItems = [
+    ["Open tickets", metrics.openTickets],
+    ["Active workflows", metrics.activeWorkflows],
+    ["Unresolved dependencies", metrics.unresolvedDependencies],
+    ["QA at risk", metrics.qaAtRisk],
+    ["Open tasks", metrics.openTasks],
+  ]
+
+  list.innerHTML = '<div class="platform-overview">' +
+    '<div class="metric-grid">' + metricItems.map(([label, value]) =>
+      '<div class="metric"><strong>' + escapeHtml(value) + '</strong><span class="muted">' +
+      escapeHtml(label) + '</span></div>').join("") + '</div>' +
+    '<div class="lane-grid">' + state.platform.sections.map((section) => renderPlatformLane(section)).join("") +
+    '</div></div>'
+
+  list.querySelectorAll(".record-row").forEach((row) => {
+    row.addEventListener("click", () => selectRecord({ type: row.dataset.type, id: row.dataset.id }))
+  })
+}
+
+function renderPlatformLane(section) {
+  const rows = section.items.length
+    ? section.items.map(renderRecordRow).join("")
+    : '<div class="empty-state"><p>No ' + escapeHtml(section.label.toLowerCase()) + ' yet.</p></div>'
+  return '<section class="lane"><div class="lane-heading"><h3>' + escapeHtml(section.label) +
+    '</h3><span class="muted">' + section.items.length + '</span></div>' + rows + '</section>'
+}
+
 function renderRecords() {
   count.textContent = state.items.length + (state.items.length === 1 ? " result" : " results")
   if (!state.items.length) {
@@ -1234,27 +1523,33 @@ function renderRecords() {
     return
   }
 
-  list.innerHTML = state.items.map((item) => {
-    const active = state.selected && state.selected.id === item.ref.id && state.selected.type === item.ref.type
-    return '<button class="record-row ' + (active ? "active" : "") + '" data-type="' + item.ref.type + '" data-id="' +
-      item.ref.id + '">' +
-      '<span class="record-main"><span class="eyebrow">' + escapeHtml(item.eyebrow) + '</span>' +
-      '<span class="record-title">' + escapeHtml(item.title) + '</span>' +
-      '<span class="record-subtitle">' + escapeHtml(item.subtitle ?? "Updated " + formatDate(item.updatedAt)) +
-      '</span></span>' +
-      '<span class="badge-row">' + item.badges.map((badge) => '<span class="badge">' + escapeHtml(badge) +
-        '</span>').join("") + '</span>' +
-      '</button>'
-  }).join("")
+  list.innerHTML = state.items.map(renderRecordRow).join("")
 
   list.querySelectorAll(".record-row").forEach((row) => {
     row.addEventListener("click", () => selectRecord({ type: row.dataset.type, id: row.dataset.id }))
   })
 }
 
+function renderRecordRow(item) {
+  const active = state.selected && state.selected.id === item.ref.id && state.selected.type === item.ref.type
+  return '<button class="record-row ' + (active ? "active" : "") + '" data-type="' + item.ref.type + '" data-id="' +
+    item.ref.id + '">' +
+    '<span class="record-main"><span class="eyebrow">' + escapeHtml(item.eyebrow) + '</span>' +
+    '<span class="record-title">' + escapeHtml(item.title) + '</span>' +
+    '<span class="record-subtitle">' + escapeHtml(item.subtitle ?? "Updated " + formatDate(item.updatedAt)) +
+    '</span></span>' +
+    '<span class="badge-row">' + item.badges.map((badge) => '<span class="badge">' + escapeHtml(badge) +
+      '</span>').join("") + '</span>' +
+    '</button>'
+}
+
 async function selectRecord(ref) {
   state.selected = ref
-  renderRecords()
+  if (state.view === "platform") {
+    renderPlatform()
+  } else {
+    renderRecords()
+  }
   detail.className = "empty-state"
   detail.innerHTML = "<p>Loading detail...</p>"
   try {
@@ -1330,10 +1625,12 @@ async function createRecord() {
       }),
     })
     dialog.close()
+    state.view = "records"
     state.type = type
+    state.kind = type === "collection" ? data.kind ?? "" : ""
     searchInput.value = ""
     state.query = ""
-    document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.type === type))
+    syncActiveNav()
     await loadRecords()
   } catch (error) {
     formError.textContent = error.message
@@ -1347,6 +1644,18 @@ async function archiveSelected() {
     encodeURIComponent(state.selected.id) + "/archive", { method: "POST", body: "{}" })
   state.selected = null
   await loadRecords()
+}
+
+function syncActiveNav() {
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    const itemView = item.dataset.view ?? "records"
+    const itemType = item.dataset.type ?? "collection"
+    const itemKind = item.dataset.kind ?? ""
+    item.classList.toggle(
+      "active",
+      itemView === state.view && itemType === state.type && itemKind === state.kind,
+    )
+  })
 }
 
 function debounce(fn, wait) {
@@ -1371,6 +1680,7 @@ function escapeHtml(value) {
 }
 
 renderCreateFields()
+syncActiveNav()
 loadRecords()
 `
 
