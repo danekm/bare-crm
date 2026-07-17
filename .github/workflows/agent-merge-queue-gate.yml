@@ -1,0 +1,206 @@
+name: Agent Merge Readiness
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - edited
+  status:
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number to evaluate for a manual gate run."
+        required: false
+        type: string
+      head_sha:
+        description: "Expected PR head SHA recorded when the retry was requested."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.event.inputs.head_sha || github.event.inputs.pr || github.event.merge_group.head_sha || github.event.sha || github.sha }}-${{ github.event_name == 'status' && github.event.context || 'event' }}
+  cancel-in-progress: true
+
+jobs:
+  agent-merge-readiness:
+    name: ${{ github.event_name == 'workflow_dispatch' && 'agent/merge-readiness-manual-recovery' || github.event_name == 'status' && github.event.context != 'agent/finalized' && 'agent/merge-readiness-ignored-status' || 'agent/merge-readiness' }}
+    if: >-
+      github.event_name == 'merge_group' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'status' && github.event.context == 'agent/finalized')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve exact target head
+        id: target-context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_EVENT_NAME: ${{ github.event_name }}
+          GATE_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
+          GATE_PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          GATE_STATUS_SHA: ${{ github.event.sha || '' }}
+          GATE_MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha || '' }}
+          GATE_INPUT_PR: ${{ github.event.inputs.pr || '' }}
+          GATE_INPUT_HEAD_SHA: ${{ github.event.inputs.head_sha || '' }}
+        run: |
+          set -euo pipefail
+          pr="$GATE_PULL_REQUEST_NUMBER"
+          head_sha="$GATE_PULL_REQUEST_HEAD_SHA"
+
+          if [ "$GATE_EVENT_NAME" = "workflow_dispatch" ]; then
+            pr="$GATE_INPUT_PR"
+            head_sha="$GATE_INPUT_HEAD_SHA"
+            if [ -z "$head_sha" ] && [ -n "$pr" ]; then
+              head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$pr" --jq '.head.sha')"
+            fi
+            if [ -z "$head_sha" ]; then
+              echo "::error::Manual recovery requires head_sha or a PR number whose current head can be resolved."
+              exit 1
+            fi
+          fi
+
+          if [ "$GATE_EVENT_NAME" = "status" ] && [ -n "$GATE_STATUS_SHA" ]; then
+            head_sha="$GATE_STATUS_SHA"
+          fi
+
+          if [ -z "$head_sha" ] && [ -n "$GATE_MERGE_GROUP_HEAD_SHA" ]; then
+            head_sha="$GATE_MERGE_GROUP_HEAD_SHA"
+          fi
+
+          {
+            echo "pr=$pr"
+            echo "head_sha=$head_sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact target head
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0
+        with:
+          ref: ${{ steps.target-context.outputs.head_sha }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Preflight trusted Platform checkout credential
+        env:
+          HAS_PLATFORM_REPO_TOKEN: ${{ secrets.PLATFORM_REPO_TOKEN != '' }}
+          HAS_LEGACY_PLATFORM_REPO_TOKEN: ${{ secrets.SEVENSTEPS_PLATFORM_READ_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_PLATFORM_REPO_TOKEN" != "true" ] && [ "$HAS_LEGACY_PLATFORM_REPO_TOKEN" != "true" ]; then
+            echo "::error title=remote_credential_missing:platform::Configure PLATFORM_REPO_TOKEN or SEVENSTEPS_PLATFORM_READ_TOKEN with read access to private repo 7steps-dev/7steps-platform."
+            exit 1
+          fi
+
+
+      - name: Check out trusted Platform gate engine
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0
+        with:
+          repository: 7steps-dev/7steps-platform
+          ref: main
+          path: 7steps-platform
+          token: ${{ secrets.PLATFORM_REPO_TOKEN || secrets.SEVENSTEPS_PLATFORM_READ_TOKEN || github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2.0.4
+        with:
+          deno-version: v2.x
+          cache: true
+
+      - name: Preflight Linear credential family
+        env:
+          HAS_LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY != '' }}
+          HAS_LINEAR_AGENT_VERIFIER_CLIENT_ID: ${{ secrets.LINEAR_AGENT_VERIFIER_CLIENT_ID != '' }}
+          HAS_LINEAR_AGENT_VERIFIER_CLIENT_SECRET: ${{ secrets.LINEAR_AGENT_VERIFIER_CLIENT_SECRET != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_LINEAR_API_KEY" != "true" ] && { [ "$HAS_LINEAR_AGENT_VERIFIER_CLIENT_ID" != "true" ] || [ "$HAS_LINEAR_AGENT_VERIFIER_CLIENT_SECRET" != "true" ]; }; then
+            echo "::error title=remote_credential_missing:linear::Configure LINEAR_API_KEY or the LINEAR_AGENT_VERIFIER_CLIENT_ID/SECRET pair for agent/merge-readiness."
+            exit 1
+          fi
+
+      - name: Run trusted exact-head merge readiness
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_AGENT_VERIFIER_CLIENT_ID: ${{ secrets.LINEAR_AGENT_VERIFIER_CLIENT_ID }}
+          LINEAR_AGENT_VERIFIER_CLIENT_SECRET: ${{ secrets.LINEAR_AGENT_VERIFIER_CLIENT_SECRET }}
+          AGENT_GATE_PR: ${{ steps.target-context.outputs.pr || '' }}
+          AGENT_GATE_HEAD_SHA: ${{ steps.target-context.outputs.head_sha || '' }}
+          AGENT_REPO_PATH: ${{ github.workspace }}/target
+          AGENT_REPO_PATH_CRM: ${{ github.workspace }}/target
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "$AGENT_GATE_HEAD_SHA" ]; then
+            args+=(--head-sha "$AGENT_GATE_HEAD_SHA")
+          fi
+          if [ -n "$AGENT_GATE_PR" ]; then
+            args+=(--pr "$AGENT_GATE_PR")
+          fi
+          deno run \
+            --allow-run \
+            --allow-read \
+            --allow-write \
+            --allow-env \
+            --allow-net=api.github.com,api.linear.app \
+            7steps-platform/tools/developer-platform/agent-workflow/agent.ts \
+            gate \
+            --repo crm \
+            --check agent/merge-readiness \
+            "${args[@]}"
+
+      - name: Publish exact-head merge readiness result
+        if: always() && steps.target-context.outputs.head_sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_JOB_STATUS: ${{ job.status }}
+          GATE_SHA: ${{ steps.target-context.outputs.head_sha }}
+          GATE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$GATE_JOB_STATUS" = "success" ]; then
+            state=success
+            description="Merge readiness passed."
+          else
+            state=failure
+            description="Merge readiness failed."
+          fi
+          for context in agent/merge-readiness agent-merge-queue-gate; do
+            gh api "repos/${{ github.repository }}/statuses/$GATE_SHA" \
+              -f state="$state" \
+              -f context="$context" \
+              -f description="$description" \
+              -f target_url="$GATE_URL"
+          done
+
+  agent-merge-queue-gate:
+    name: ${{ github.event_name == 'workflow_dispatch' && 'agent-merge-queue-gate-manual-recovery' || github.event_name == 'status' && github.event.context != 'agent/finalized' && 'agent-merge-queue-gate-ignored-status' || 'agent-merge-queue-gate' }}
+    if: >-
+      always() && (
+        github.event_name == 'merge_group' ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+        (github.event_name == 'status' && github.event.context == 'agent/finalized')
+      )
+    needs: agent-merge-readiness
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set -euo pipefail
+          if [ "${{ needs.agent-merge-readiness.result }}" != "success" ]; then
+            echo "::error::agent/merge-readiness did not pass; legacy agent-merge-queue-gate mirrors failure."
+            exit 1
+          fi
+          echo "agent/merge-readiness passed; legacy agent-merge-queue-gate check preserved for branch protection migration."

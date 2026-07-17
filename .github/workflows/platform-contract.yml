@@ -1,0 +1,71 @@
+name: Platform Contract
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  platform-contract:
+    name: platform-contract
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact target head
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Preflight trusted Platform checkout credential
+        env:
+          HAS_PLATFORM_REPO_TOKEN: ${{ secrets.PLATFORM_REPO_TOKEN != '' }}
+          HAS_LEGACY_PLATFORM_REPO_TOKEN: ${{ secrets.SEVENSTEPS_PLATFORM_READ_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_PLATFORM_REPO_TOKEN" != "true" ] && [ "$HAS_LEGACY_PLATFORM_REPO_TOKEN" != "true" ]; then
+            echo "::error title=remote_credential_missing:platform::Configure PLATFORM_REPO_TOKEN or SEVENSTEPS_PLATFORM_READ_TOKEN with read access to private repo 7steps-dev/7steps-platform."
+            exit 1
+          fi
+
+      - name: Check out trusted Platform contract engine
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0
+        with:
+          repository: 7steps-dev/7steps-platform
+          ref: main
+          path: 7steps-platform
+          token: ${{ secrets.PLATFORM_REPO_TOKEN || secrets.SEVENSTEPS_PLATFORM_READ_TOKEN || github.token }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prepare legacy Platform contract compatibility
+        run: |
+          if [ ! -e 7steps-platform/tools/agent-workflow/mod.ts ]; then
+            ln -s ../developer-platform/agent-workflow/mod.ts 7steps-platform/tools/agent-workflow/mod.ts
+          fi
+          test -f 7steps-platform/tools/agent-workflow/mod.ts
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2.0.4
+        with:
+          deno-version: v2.x
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Platform contract
+        working-directory: target
+        env:
+          AGENT_PLATFORM_PATH: ${{ github.workspace }}/7steps-platform
+        run: npm run agent:contract
