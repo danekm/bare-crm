@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "license": "MIT",
   "description": "A small CRM kernel with Write API, Read API, Event Log, storage adapters, and a boring operator CLI.",
+  "nodeModulesDir": "auto",
   "exports": {
     ".": "./src/index.ts",
     "./admin": "./src/admin.ts",
@@ -41,8 +42,12 @@
   },
   "fmt": {
     "exclude": [
+      ".github/agents/",
+      ".github/workflows/agent-merge-queue-gate.yml",
+      "AGENTS.md",
       "docs-site/",
-      "docs/generated/"
+      "docs/generated/",
+      "scripts/agent-workflow.mjs"
     ],
     "lineWidth": 100,
     "semiColons": false,

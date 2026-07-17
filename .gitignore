@@ -1,4 +1,5 @@
 .DS_Store
+.agent/
 .env
 .env.*
 node_modules/
